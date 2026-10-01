@@ -1,0 +1,13 @@
+{
+  "name": "@xsu/platform",
+  "version": "0.0.0",
+  "private": true,
+  "description": "基础设施：auth / cache / queue。可被领域层与应用层使用，不含业务规则。",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

@@ -1,0 +1,14 @@
+/**
+ * Tailwind 共享入口。
+ *
+ * 这是 Tailwind 4 的 CSS-first 配置：没有 tailwind.config.js，主题在 CSS 里写。
+ * M0 只固定两件事——引入 Tailwind、把 dark 变体定义成 class 驱动，
+ * 因为 `docs/ROADMAP.md` M1 要求「跟随系统 + 手动切换 + 持久化」，
+ * 手动切换必须能在 <html> 上打 class，用 prefers-color-scheme 做不到。
+ *
+ * 具体的设计 token（颜色、圆角、字号）属于设计系统，M1 随 shadcn/ui 一起定，
+ * 不在这里提前发明。
+ */
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));

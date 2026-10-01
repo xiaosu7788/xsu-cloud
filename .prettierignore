@@ -1,0 +1,14 @@
+# 依赖与构建产物
+node_modules/
+dist/
+out/
+.next/
+coverage/
+Temp/
+pnpm-lock.yaml
+
+# Markdown 一律不进 Prettier。
+# 实测 Prettier 对本文档唯一会动的是 Markdown 表格对齐补空格（AGENTS.md 70 行、
+# README.md 40 行纯空白差异），对 A 级文档是纯噪音，还会让文档评审和代码评审互相污染。
+# 代价：Markdown 没有自动格式检查，靠人工维持，作为已知债务记录在 README 的验证说明里。
+*.md

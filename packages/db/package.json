@@ -1,0 +1,13 @@
+{
+  "name": "@xsu/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "数据层：schema、迁移与仓储实现。不含业务规则。",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

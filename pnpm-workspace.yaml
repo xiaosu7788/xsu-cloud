@@ -1,0 +1,8 @@
+packages:
+  - apps/*
+  - packages/*
+
+# pnpm 10+ 默认不执行依赖的构建脚本。这里只放行确实需要的那一个。
+# 加新条目必须写明理由，不要整包放行。
+onlyBuiltDependencies:
+  - esbuild

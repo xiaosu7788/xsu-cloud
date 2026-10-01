@@ -1,0 +1,26 @@
+{
+  "name": "xsu-cloud",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r --if-present run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.0",
+    "eslint": "10.11.0",
+    "prettier": "3.9.9",
+    "typescript": "5.9.3",
+    "vitest": "5.0.2"
+  }
+}

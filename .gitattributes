@@ -1,0 +1,23 @@
+# 全仓库统一 LF，禁止 Git 自动做换行符转换。
+# 依据 AGENTS.md「工程实现」：文件使用 UTF-8 无 BOM 和 LF。
+# 本机 core.autocrlf 可能是 true，靠这里覆盖，避免其他机器检出后变成 CRLF。
+* text=auto eol=lf
+
+# 二进制文件不做换行符处理。
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.avif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.zip binary
+*.pdf binary
+
+# Windows 脚本必须 CRLF，否则 cmd.exe 解析会出错。
+*.bat text eol=crlf
+*.cmd text eol=crlf

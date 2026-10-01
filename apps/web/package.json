@@ -1,0 +1,7 @@
+{
+  "name": "@xsu/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Next.js 应用：表现层 + 应用层。M0 只有目录骨架，依赖与代码随 M1 落地。",
+  "type": "module"
+}

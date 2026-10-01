@@ -1,0 +1,13 @@
+{
+  "name": "@xsu/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "领域层：业务规则、状态机、权限与配额判定。零框架依赖，不依赖集成层。",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

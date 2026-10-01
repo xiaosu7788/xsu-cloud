@@ -1,0 +1,54 @@
+# xsu-cloud 本地开发依赖（Postgres + Redis）。
+#
+# 这是 docs/ROADMAP.md M0 的交付范围。minio（对象存储替身）与 mailpit（收信）
+# 按 docs/ARCHITECTURE.md 3.1 也属于「仅本地开发」，但要等对应模块开工再加：
+# mailpit 在 M1，minio 在 M4。现在加进来只会是没人验过的空壳。
+#
+# 用法：
+#   Copy-Item docker/.env.example docker/.env
+#   docker compose -f docker/docker-compose.yml up -d
+#
+# 生产不跑这个文件：生产用 Cloudflare R2 + 真实 SMTP，且反向代理与 HTTPS 由
+# Cloudflare 承担（docs/ARCHITECTURE.md 3.1）。
+
+name: xsu-cloud
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: xsu-postgres
+    restart: unless-stopped
+    environment:
+      # 三个变量都不给默认值：缺变量时 Compose 直接报错，避免用弱口令把库起起来。
+      POSTGRES_USER: ${POSTGRES_USER:?需在 docker/.env 中设置}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?需在 docker/.env 中设置}
+      POSTGRES_DB: ${POSTGRES_DB:?需在 docker/.env 中设置}
+      POSTGRES_INITDB_ARGS: --encoding=UTF8
+      TZ: UTC
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  redis:
+    image: redis:8-alpine
+    container_name: xsu-redis
+    restart: unless-stopped
+    # 队列必须开 AOF，否则重启会丢任务（docs/ARCHITECTURE.md 7.3）。
+    command: ['redis-server', '--appendonly', 'yes', '--appendfsync', 'everysec']
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s

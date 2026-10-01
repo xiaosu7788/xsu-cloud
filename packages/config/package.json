@@ -1,0 +1,30 @@
+{
+  "name": "@xsu/config",
+  "version": "0.0.0",
+  "private": true,
+  "description": "eslint / tsconfig / tailwind 共享配置。不含业务代码。",
+  "type": "module",
+  "exports": {
+    "./eslint": "./eslint/index.mjs",
+    "./tsconfig/base.json": "./tsconfig/base.json",
+    "./tsconfig/nextjs.json": "./tsconfig/nextjs.json",
+    "./tailwind/base.css": "./tailwind/base.css"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "eslint": "10.11.0",
+    "typescript": "5.9.3"
+  },
+  "peerDependencies": {
+    "eslint": "^10.0.0",
+    "typescript": ">=5.9.0 <6.0.0"
+  },
+  "dependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint-config-prettier": "10.1.8",
+    "globals": "17.12.0",
+    "typescript-eslint": "8.71.0"
+  }
+}

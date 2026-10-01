@@ -1,0 +1,35 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+out/
+.next/
+*.tsbuildinfo
+
+# 测试与覆盖率
+coverage/
+
+# 环境变量。.env.example 必须入库，其余一律不入库。
+.env
+.env.*
+!.env.example
+
+# 项目内临时文件。约定见 AGENTS.md 与 workspace-file-guard：
+# 临时文件、脚本、缓存、输出都留在项目内，不要写到工作区外。
+Temp/
+
+# 编辑器与系统
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# 本地数据卷
+docker/data/
