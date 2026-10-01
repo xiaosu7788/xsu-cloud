@@ -166,7 +166,8 @@ Temp/                       临时文件与中间产物（已 gitignore，约定
 
 ## 已知债务
 
-- CI 工作流（`.github/workflows/ci.yml`）只经过本地等价命令验证，**未在 GitHub 上实跑过**：当前 git 仓库根是 `D:\Project`，`xsu-cloud` 是它未跟踪的子目录，`.github/` 不在仓库根，工作流不会被触发。要么把 `xsu-cloud` 独立成仓库，要么把 CI 放到真正的仓库根。
+- 本机直连 `github.com:443` 会被重置（`api.github.com` 正常），推送必须显式走本地代理：`git -c http.proxy=socks5h://127.0.0.1:10808 push`。SSH 的 443 端口通，但本机默认 SSH 身份是 `xiaosu-git`，不是本仓库所有者账号，所以本仓库固定走 https + gh 凭证。
+- 本项目外层还有一个无提交、无远端的 git 仓库（`D:\Project`，其下并列多个无关项目）。在它的工作树里执行 `git add` 会把本项目当成嵌套仓库，操作前先确认当前目录。
 - `docker/docker-compose.yml` 只验证过 `docker compose config` 能解析（带占位环境变量），**尚未实际 `up` 启动容器**。
 - 第 5 节版本号只在各个 `package.json` 里固化（`pnpm-lock.yaml` 已生成）；M1 引入框架依赖时需重新核对并记录升级。
 - `packages/core` 的 ≥80% 分支覆盖率要求尚无工具支撑：`@vitest/coverage-v8` 刻意未安装，等 M2 有真实领域代码再接入。

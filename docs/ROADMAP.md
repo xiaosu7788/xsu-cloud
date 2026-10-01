@@ -29,7 +29,7 @@
 
 ### M0 — 地基与文档
 
-**状态**：已完成（2026-09-30）。两条退出标准均已实跑验证 —— `packages/core` 里写 `import next from 'next'` 时 `pnpm lint` 退出码 1；`pnpm typecheck` 退出码 0。工程侧尚未验证的部分（CI 未上远端实跑、Compose 未实际 `up`）记在 [`../AGENTS.md`](../AGENTS.md)「已知债务」。
+**状态**：已完成。2026-09-30 实跑验证两条退出标准 —— `packages/core` 里写 `import next from 'next'` 时 `pnpm lint` 退出码 1；`pnpm typecheck` 退出码 0。2026-10-01 仓库独立为 <https://github.com/xiaosu7788/xsu-cloud>，CI 在 GitHub 上首次跑通（run 36817383046，10 个步骤全 success）。尚未验证的部分（Compose 未实际 `up`）记在 [`../AGENTS.md`](../AGENTS.md)「已知债务」。
 
 **目标**：让后续所有工作有可执行的地基。
 
