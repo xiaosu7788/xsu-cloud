@@ -1,0 +1,69 @@
+/**
+ * `(site)` 分区外壳：公开页。
+ *
+ * ## 这个布局刻意不读会话
+ *
+ * 与根布局同一条理由（`app/layout.tsx` 文件头）：一旦在布局里调用 `cookies()`，
+ * **整个分区**都会变成动态渲染，`docs/ROADMAP.md` M1 退出标准 1 随之失效。
+ * 顶栏的登录态因此由客户端组件 `SessionBadge` 自己拿（它读 `/api/auth/get-session`）。
+ *
+ * 这是本分区唯一一处与鉴权有关的东西，也正是「公开页默认静态化」这条要求的落点：
+ * 判断依据是 `next build` 的输出里 `/` 标着 `○`（静态预渲染），而不是代码里没出现
+ * `cookies`。公开分区里有一个**有意为之**的动态例外：`/sign-in` 要按请求读环境配置与
+ * OAuth 回调参数，理由写在该页文件头。
+ *
+ * ## 导航清单为什么放在这个文件里
+ *
+ * `SiteNav` 收的是「一个分区自己的入口清单」，它属于布局的装配，
+ * 不属于任何业务模块。放进 `features/` 会让一个还没建立的模块先有一套目录。
+ * 等社区、工具箱落地时，各自的入口由各自模块导出，这里只做拼装。
+ */
+import type { Metadata } from 'next';
+import type { ReactNode } from 'react';
+
+import { SiteNav } from '@/components/site-nav';
+import { ThemeToggle } from '@/components/theme-toggle';
+
+import { SessionBadge } from '@/features/auth/session-badge';
+import { SITE_HOME } from '@/features/auth/routes';
+
+/**
+ * 顶栏链接。
+ *
+ * 只放**确实存在**的公开页：目前只有首页。写一个指向 `/community` 的入口而去访问一个
+ * 404，比少一个入口严重得多——「导航里出现的每个路径都必须真的有一个页面」是一条靠人工
+ * review 维持的约束，见 `features/auth/routes.ts` 文件头。
+ */
+const SITE_NAV_ITEMS = [{ href: SITE_HOME, label: '首页', exact: true }] as const;
+
+export const metadata: Metadata = {
+  description: '个人云站：中转站控制台、社区、工具箱与生图工作台。',
+};
+
+export default function SiteLayout({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex min-h-dvh flex-col">
+      {/*
+       * 操作区顺序是「主题 → 登录态」：主题切换在任何登录状态下都在，位置固定，
+       * 用户不必因为登录与否去找它。移动端两个按钮都占 44px（`Button` 的 `sm` 与
+       * `icon` 尺寸在小屏都是 44px，见 `components/ui/button.tsx`）。
+       */}
+      <SiteNav
+        label="站点导航"
+        items={SITE_NAV_ITEMS}
+        actions={
+          <>
+            <ThemeToggle />
+            <SessionBadge />
+          </>
+        }
+      />
+
+      {/*
+       * `flex-1` 让内容不足一屏时也能把页面撑满，避免深色下页脚下露出一条异色。
+       * 宽度与顶栏一致（`max-w-5xl` + `px-4`），否则两者的左右边缘会错开。
+       */}
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">{children}</main>
+    </div>
+  );
+}

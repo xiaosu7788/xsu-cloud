@@ -1,0 +1,103 @@
+/**
+ * 全局样式入口（Tailwind 4，CSS-first，没有 tailwind.config.js）。
+ *
+ * 分三层，往上依赖，不往回：
+ *
+ * 1. `@xsu/config/tailwind/base.css` —— 只引入 Tailwind 并定义 `dark` 变体由 class 驱动。
+ * 2. 本文件的 `:root` / `.dark` —— 设计 token 的**值**。浅色写在 `:root`，深色写在 `.dark`。
+ *    class 而不是 `prefers-color-scheme`：M1 要求「跟随系统 + 手动切换 + 持久化」，
+ *    手动切换必须能在 `<html>` 上打 class。next-themes 负责打，且 `theme: 'system'`
+ *    时它会自己去读系统偏好。
+ * 3. `@theme inline` —— 把 token 接成 Tailwind 的命名空间，于是有 `bg-background`、
+ *    `text-muted-foreground`、`border-border` 这类工具类可用。
+ *
+ * `inline` 不能省：不加的话 Tailwind 会把值复制进 `--color-*` 变量，
+ * 而 `.dark` 只改 `--background` 不改 `--color-background`，深色主题会整片不生效。
+ */
+@import '@xsu/config/tailwind/base.css';
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.505 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.505 0.213 27.518);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.906 0 0);
+  --input: oklch(0.906 0 0);
+  --ring: oklch(0.556 0 0);
+  --radius: 0.625rem;
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.145 0 0);
+  --border: oklch(1 0 0 / 14%);
+  --input: oklch(1 0 0 / 18%);
+  --ring: oklch(0.556 0 0);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* 圆角全部由 --radius 派生，改一处即可整体调节。 */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* 界面文字以简体中文为主，因此系统字体栈里优先中文字面。 */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Noto Sans SC', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+}
+
+@layer base {
+  /*
+   * 边框颜色不逐处写：Tailwind 4 的 preflight 把 `border-color` 重置成 `currentColor`，
+   * 于是「忘了写颜色」表现为文字色的边框，很难看也很难查。这里统一兜成 token。
+   * 工具类（`border-red-500`）优先级更高，不受影响。
+   */
+  * {
+    border-color: var(--border);
+  }
+
+  /*
+   * 键盘可达性是硬要求（`docs/PRD.md` 4.1「hover 不得作为唯一反馈」）：
+   * 焦点环必须始终可见，因此不写 `outline: none`，也不靠 hover 变色表达状态。
+   */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* 移动端点按不要出现灰色高亮块，它会被误认为「按钮已选中」。 */
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+}

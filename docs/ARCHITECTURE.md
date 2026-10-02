@@ -20,7 +20,7 @@
 
 | 层 | 位置 | 职责 | 明确不做 |
 | --- | --- | --- | --- |
-| 表现层 | `apps/web/app/(site\|console\|admin)`、`components/`、`features/` | 渲染、交互、局部状态 | 不写业务规则，不直接访问数据库 |
+| 表现层 | `apps/web/app/(site\|console\|admin)`、`components/`、`features/`、`public/`（PWA 静态资源） | 渲染、交互、局部状态 | 不写业务规则，不直接访问数据库 |
 | 应用层 | `apps/web/app/api/`、Server Actions | 解析入参、校验、鉴权、调领域层、组装响应 | **≤30 行**，不写业务规则，不拼 SQL |
 | 领域层 | `packages/core` | 业务规则、状态机、权限判定、配额判定 | 不依赖任何框架，不依赖集成层 |
 | 数据层 | `packages/db` | schema、迁移、仓储实现 | 不含业务规则 |
@@ -129,11 +129,11 @@
 
 ## 5. 数据模型分区
 
-详细表结构见 `docs/DATA-MODEL.md`（尚未建立）。此处只固定分域与关键设计点。
+详细表结构见 [`DATA-MODEL.md`](DATA-MODEL.md)（M1 建立：鉴权四表 + 邀请码表）。此处只固定分域与关键设计点。
 
 | 域 | 核心表 | 关键设计点 |
 | --- | --- | --- |
-| `accounts` | `users`、`sessions`、`external_identities`、`invites` | **`external_identities` 以 `(provider, external_id)` 为主键**，不在 `users` 上硬写某一个外部系统的 ID。任何外部系统都能挂，换源不返工 |
+| `accounts` | `user`、`session`、`account`、`verification`、`invites`（M4 再加 `external_identities`） | **不在 `user` 上硬写某一个外部系统的 ID**：登录用的第三方身份挂在 `account`，以 `(provider_id, account_id)` 标识（表名与字段见 [`DATA-MODEL.md`](DATA-MODEL.md)）；外部系统的用户级映射留到 M4 的 `external_identities`。任何外部系统都能挂，换源不返工 |
 | `community` | `posts`、`comments`、`reactions`、`tags`、`reports` | `reactions` 靠唯一约束防重复点赞；列表走游标分页 + 复合索引 |
 | `tools` | `tools`、`tool_runs`、`tool_favorites` | `tool_runs` 存输入输出摘要与耗时用于配额与审计，**不存敏感内容** |
 | `genimage` | `image_jobs`、`image_assets`、`image_presets` | `image_jobs` 存外部任务 ID 与状态机；`image_assets` 只存对象存储 key 与元数据，**不存二进制** |
@@ -213,14 +213,16 @@
 
 ### 7.4 响应式原语（移动端）
 
-移动端适配不是样式问题，是设计系统层的能力。M1 需在 `apps/web/components` 提供：
+移动端适配不是样式问题，是设计系统层的能力。**M1 已在 `apps/web/components` 建立**（本节在 M1 之前只有一份清单）：
 
-| 原语 | 解决的重复问题 |
-| --- | --- |
-| `ResponsiveNav` | 桌面侧边栏 / 移动底部 Tab 两套壳 |
-| `ResponsiveTable` | 后台与控制台的宽表在移动端降级为卡片列表 |
-| `ResponsiveGallery` | 生图结果的滑动与全屏查看 |
-| 断点常量 | 避免各模块自行写断点值 |
+| 原语 | 解决的重复问题 | 落点与入口 |
+| --- | --- | --- |
+| `ResponsiveNav` | 桌面侧边栏 / 移动底部 Tab 两套壳 | `responsive-nav.tsx`；`NavItem = { href, label, icon?, exact? }`，移动 Tab 上限 `MOBILE_TAB_MAX = 5` |
+| `ResponsiveTable` | 后台与控制台的宽表在移动端降级为卡片列表 | `responsive-table.tsx`；一份 `columns` 同时驱动表头与移动端「字段名 + 值」，`primary` 列作卡片标题 |
+| `ResponsiveGallery` | 生图结果的滑动与全屏查看 | `responsive-gallery.tsx`；移动端滚动吸附横滑，桌面端补翻页按钮 |
+| 断点常量 | 避免各模块自行写断点值 | `breakpoints.ts`；`BREAKPOINTS` / `BREAKPOINT_PX` / `atLeast` / `below` |
+
+形态切换默认交给 CSS（`hidden lg:flex` / `lg:hidden`），不用 JavaScript 判断视口——服务端与首屏渲染的结构才一致。唯一例外是「按钮的有无改变 DOM」的场景（`ResponsiveGallery` 的桌面翻页按钮），那里必须用 JavaScript 判断。
 
 这些原语必须先于业务模块建立。否则每个模块都会各自 hack 一套，后期统一等于重写布局。
 
@@ -245,9 +247,9 @@
 ## 已知债务
 
 - **第 8 节容量数字完全空缺**，属已知空缺而非已达标。
-- 第 5 节固定了分域与关键设计点，但**具体字段、索引与迁移尚未设计**，`docs/DATA-MODEL.md` 未建立。
+- 第 5 节的分域与关键设计点已落到 [`DATA-MODEL.md`](DATA-MODEL.md)（M1 建立：鉴权四表 + 邀请码表）；**M2 起的业务表尚未设计**。
 - 第 7 节的对象存储、缓存与队列策略均为方向性描述，**尚未有一行实现**。
-- 第 7.4 节的响应式原语仅有清单，**组件 API 未确定**。
+- 第 7.4 节的三个响应式原语已在 M1 落盘、API 已确定，但**未在真实移动视口下验证**：验证缺口记在 [`ROADMAP.md`](ROADMAP.md) 第 5 节。
 - 生图全链路（6.2）中「外部签名链接的实际有效期」来自对外部系统的调研，**未在本项目实际源上验证**，见 [`PRD.md`](PRD.md) 已知债务。
 - 备份与恢复的具体方案（频率、保留期、异地存储、演练步骤）属 `docs/DEPLOYMENT.md` 范围，尚未建立；在单机部署下这是最高风险项。
 - 本文件与 [`../AGENTS.md`](../AGENTS.md) 第 2 节存在事实重叠（目录约定），目前以 `AGENTS.md` 为准。目录结构变化时需同时改两处 —— 这违反「同一事实只写一处」，属于待清理的重复。

@@ -29,7 +29,7 @@
 
 ### M0 — 地基与文档
 
-**状态**：已完成。2026-09-30 实跑验证两条退出标准 —— `packages/core` 里写 `import next from 'next'` 时 `pnpm lint` 退出码 1；`pnpm typecheck` 退出码 0。2026-10-01 仓库独立为 <https://github.com/xiaosu7788/xsu-cloud>，CI 在 GitHub 上首次跑通（run 36817383046，10 个步骤全 success）。尚未验证的部分（Compose 未实际 `up`）记在 [`../AGENTS.md`](../AGENTS.md)「已知债务」。
+**状态**：已完成。2026-09-30 实跑验证两条退出标准 —— `packages/core` 里写 `import next from 'next'` 时 `pnpm lint` 退出码 1；`pnpm typecheck` 退出码 0。2026-10-01 仓库独立为 <https://github.com/xiaosu7788/xsu-cloud>，CI 在 GitHub 上首次跑通（run 36817383046，10 个步骤全 success）。当时未验证的 Compose 在 M1 已实际用起来（`postgres` 服务 `up` 并跑过迁移），仅 `redis` 仍未启动，见 [`../AGENTS.md`](../AGENTS.md)「已知债务」。
 
 **目标**：让后续所有工作有可执行的地基。
 
@@ -54,13 +54,21 @@
 
 ### M1 — 鉴权与设计系统
 
+**状态**：五项交付物全部落盘，静态与运行时验证均已实跑。提交级检查链 `pnpm typecheck`、`pnpm lint`、`pnpm format:check`、`pnpm test`（7 个文件 80 个用例）与 `next build` 退出码均为 0（2026-10-02）。构建产出的路由表是 `○ /`、`○ /_not-found`、`ƒ /sign-in`、`ƒ /sign-up`、`ƒ /console`、`ƒ /console/settings`、`ƒ /admin`、`ƒ /api/auth/[...all]` —— 退出标准 1 由此成立：唯一的公开内容页（首页）仍是静态预渲染，公开分区里只有 `/sign-in` 与 `/sign-up` 按请求渲染，而这两个都不是内容页，理由分别写在各自 `page.tsx` 的文件头（登录页：第三方提供方清单来自环境变量、OAuth 失败码必须出现在首屏 HTML；注册页：已登录的人不该看到注册表单）。
+
+**三条退出标准现在都有实测证据**（2026-10-02，本机开发服务 + 真实库 + 真实会话；受保护路由的匿名重定向随后在生产构建上用 `next start` 复测过一遍；脚本在 `Temp/scripts/`，产物在 `Temp/out/`，两者都不入库）：
+
+- **标准 2**：在面板浏览器的同源 iframe 里按 360px / 1280px 量测 `/console`（`(console)` 外壳）与 `/admin`（`(admin)` 外壳）。360px 下 `documentElement.scrollWidth === clientWidth === 360`、桌面侧边栏 `display: none`、底部 Tab `360×57`（整格 `h-14` + `env(safe-area-inset-bottom)`）且两个入口各 `180×56`，最小可点高度 44px；1280px 下侧边栏 `240×900`、底部 Tab `display: none`、侧边栏项 `223×44`，同样无横向滚动。`min-h-dvh` 与安全区内边距在两档视口下都实际出现在 DOM 里。
+- **标准 3**：开发库里一个「邮箱已验证、角色 `user`」的真实账号登录后（cookie `better-auth.session_token`，`get-session` 返回 `role=user`），`GET /admin` 得到 200 与统一拒绝视图（正文含「无法访问」「当前账号没有访问该区域的权限。」与 `403 FORBIDDEN` 对账信息），而 `/console`、`/console/settings` 对同一账号正常开放 —— 控制台对任何合法角色都开放，这里不该出现拒绝页。三个受保护路由的匿名请求一律 `307 → /sign-in`，没有出现「一处 403、一处 404、一处 500」。把该账号在开发库里改成 `role=admin` 后，`/admin` 正常渲染后台外壳，两档视口下的结论与 `(console)` 一致。
+
+这一轮构建与类型检查还实际拦下两个缺陷：`packages/platform/src/registration.ts` 漏了 `getDb` 的 import；`apps/web/features/auth/session.ts` 把 `getAuth()` 写在 `await headers()` 之前 —— 前者立刻校验服务端配置，于是本该动态渲染的 `(console)`/`(admin)` 被当成可预渲染页面，构建机没有生产密钥就直接失败。两处都已修，理由写进了各自文件头。运行时验证阶段又拦下三个静态检查链看不见的缺陷（`.env` 定位、Tailwind 扫描基准、导航命中区），逐条记在 [`CHANGELOG.md`](CHANGELOG.md) 的 M1「修复」段。
 **目标**：一套可复用的骨架，业务模块只管填内容。
 
 **交付物**
 
 - Better Auth 接入：邮箱密码作为主路径、会话、角色。**OAuth 按已定结论做**：GitHub 与 Linux.do 两个提供方，各一个适配器；**不自动关联账号**，绑定须已登录后主动发起。邀请码注册准入在本里程碑落地。
 - 设计系统：shadcn/ui 基础组件、双主题（light/dark，跟随系统 + 手动切换 + 持久化）。
-- **响应式原语**：`ResponsiveNav`、`ResponsiveTable`、断点常量（见 [`ARCHITECTURE.md`](ARCHITECTURE.md) 7.4）。
+- **响应式原语**：`ResponsiveNav`、`ResponsiveTable`、`ResponsiveGallery`、断点常量（见 [`ARCHITECTURE.md`](ARCHITECTURE.md) 7.4）。
 - 路由分区 `(site)` / `(console)` / `(admin)` 外壳与权限守卫。
 - PWA 基础：manifest、图标（含 maskable）、service worker 与**明确的更新策略**。
 
@@ -79,7 +87,7 @@
 - 工具清单、执行、运行历史、收藏。
 - 领域层权限与配额判定，含跨用户访问拒绝的测试。
 - worker 基础设施（BullMQ）首次落地。
-- `docs/DATA-MODEL.md`、`docs/TESTING.md` 建立。
+- `docs/TESTING.md` 建立（`docs/DATA-MODEL.md` 已在 M1 建立）。
 - **k6 压测并回填 [`ARCHITECTURE.md`](ARCHITECTURE.md) 第 8 节的真实数字。**
 
 **退出标准**
@@ -196,3 +204,9 @@
 - **本文件的时间估计一律缺失，这是有意的。** 没有可比较的历史速度之前写下的人日数字是编的，不写比写错的强。
 - **M7 的备份演练依赖 `docs/DEPLOYMENT.md`，该文件尚未创建。**
 - **容量目标未定死。** 目标用户规模与开放程度相关，等 M2 有真实数字后再回填。
+
+- **M1 的双视口与拒绝响应验证是手工实测，不是可重跑的回归。** 结论与证据见 M1「状态」，但取得方式是在面板浏览器里量测同源 iframe：Playwright 未安装（装依赖需要单独授权），所以这三条退出标准目前挡不住回归——改坏了 CI 不会红。补 PR 级 Playwright（桌面 + 移动两套视口）是 M2 之前的欠账，见 [`AGENTS.md`](../AGENTS.md) 第 7 节的 PR 级要求。
+
+- **M1 的邮件只走过「控制台传输」，没接过真实 SMTP。** 本机 `.env` 已写入开发值（`.env` 由 `.gitignore` 排除，字段清单是入库的 `.env.example`），迁移已应用到本地 `xsu-postgres`；注册触发的验证邮件只是把链接打到终端，再由脚本去点。真实 SMTP 投递（含退信、限流、生产密钥轮换）未验证。
+
+- **M1 的 PWA 与 OAuth 都只验证到「不涉及外部交互的那一半」。** PWA：生产构建 + `next start` 下 `/manifest.webmanifest`（`application/manifest+json`，917 B）、`/sw.js`（`application/javascript`，8456 B）、`/offline.html`（3320 B）与 5 个图标（192 / 512 / maskable 192 / maskable 512 / apple-touch-icon，均 `image/png`）全部返回 200，字节数是按 `Accept-Encoding: identity` 请求后读到的 `Content-Length`；但 **service worker 的注册、离线提示与「有新版本」提示的交互没有在浏览器里跑过**。OAuth：本机没有 GitHub / Linux.do 的提供方凭证（`packages/platform` 对没配凭证的提供方整个去掉该键），真实回调与账号绑定流程未跑过。

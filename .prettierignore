@@ -12,3 +12,15 @@ pnpm-lock.yaml
 # README.md 40 行纯空白差异），对 A 级文档是纯噪音，还会让文档评审和代码评审互相污染。
 # 代价：Markdown 没有自动格式检查，靠人工维持，作为已知债务记录在 README 的验证说明里。
 *.md
+
+# Drizzle 自动生成的迁移产物（`packages/db/migrations/`）不进 Prettier。
+# `meta/` 下的 snapshot 与 journal 由 `drizzle-kit generate` 写出，格式不受我们控制：
+# 手工排版一次，下次 generate 就会改回去，CI 的 `format:check` 每次都被生成动作打红。
+# 这些文件的正确性由 `pnpm --filter @xsu/db db:check` 保证，不由格式检查保证。
+packages/db/migrations/
+# Next 生成的类型声明（`apps/web/next-env.d.ts`）不进 Prettier。
+# 内容由 `next dev` / `next build` 写出，本机（Windows）是 CRLF，且 import 硬编码双引号，
+# 与 prettier.config.mjs 的 singleQuote 冲突；手工格式化一次，下次构建就被改回去，
+# `format:check` 会反复打红。它由 Next 维护，不由格式检查保证。
+# （实测：删掉它、并同时删掉 `.next/` 后，`pnpm --filter @xsu/web typecheck` 仍退出 0。）
+apps/web/next-env.d.ts

@@ -2,8 +2,8 @@
 
 本文件是本仓库的强制约束，在本项目范围内优先于通用个人习惯。与 `~/.pi/agent/AGENTS.md` 冲突时以本文件为准；本文件未涉及的，按全局规则执行。
 
-> **当前阶段：M0 地基已落地，尚未写业务代码。**
-> 已有：pnpm workspace 骨架与全部约定目录、`packages/config` 共享配置、分层铁律 ESLint（含故意的失败用例）、提交级检查链与 CI 工作流、`docker/` 本地 Postgres + Redis。**尚无任何业务代码。** 开始任何实现之前，先读 `docs/ARCHITECTURE.md`（分层与边界）与 `docs/PRD.md`（范围与验收）。
+> **当前阶段：M1 鉴权与设计系统已落地；提交级检查链、`next build` 与运行时最小验证（真实会话 + 真实视口）均已实跑。**
+> 已有：pnpm workspace 骨架与全部约定目录、`packages/config` 共享配置、分层铁律 ESLint（含故意的失败用例）、提交级检查链与 CI 工作流、`docker/` 本地 Postgres + Redis；M1 又落下数据层表与迁移、`packages/core` 四条横切规则、`packages/platform`（配置校验 / Better Auth 实例 / 注册编排）、`apps/web` 三个分区外壳与权限守卫、设计系统与双主题、三个响应式原语、PWA 四件套、邀请码注册入口。**登录、邀请码注册、统一拒绝响应与两档视口的布局都已实测**；仍未验证的是 OAuth 回调（本机无提供方凭证）、真实 SMTP 投递、PWA 更新提示在浏览器里的行为，以及双视口的自动化回归（未装 Playwright）。未验证清单见 `docs/ROADMAP.md` 第 5 节。开始任何实现之前，先读 `docs/ARCHITECTURE.md`（分层与边界）与 `docs/PRD.md`（范围与验收）。
 
 ---
 
@@ -24,6 +24,7 @@ apps/web/app/(admin)       后台管理
 apps/web/app/api           Route Handlers（薄壳）
 apps/web/components        跨模块共享 UI，含响应式原语
 apps/web/features          按业务模块组织的页面与交互
+apps/web/public            PWA manifest、图标与 service worker（不经构建的静态资源）
 packages/core              领域层：纯 TypeScript
 packages/integrations      集成层：一个外部系统一个目录
 packages/db                数据层：schema 与迁移
@@ -37,7 +38,8 @@ scripts/                   一次性脚本与运维脚本
 Temp/                       临时文件与中间产物（已 gitignore，约定 Temp/{tests,scripts,cache,out}）
 ```
 
-新增顶层目录必须先改本文件。不允许就地新建目录、事后再补文档。
+新增目录必须先改本文件。不允许就地新建目录、事后再补文档 —— 上面这些 `apps/web/*` 子目录
+同样在约定之内，不在清单里的（例如 `apps/web/lib`）就是不允许新建的；需要时先在这里加上并说明理由。
 
 ## 3. 分层铁律（ESLint 强制，违反即 CI 失败）
 
@@ -168,8 +170,8 @@ Temp/                       临时文件与中间产物（已 gitignore，约定
 
 - 本机直连 `github.com:443` 会被重置（`api.github.com` 正常），推送必须显式走本地代理：`git -c http.proxy=socks5h://127.0.0.1:10808 push`。SSH 的 443 端口通，但本机默认 SSH 身份是 `xiaosu-git`，不是本仓库所有者账号，所以本仓库固定走 https + gh 凭证。
 - 本项目外层还有一个无提交、无远端的 git 仓库（`D:\Project`，其下并列多个无关项目）。在它的工作树里执行 `git add` 会把本项目当成嵌套仓库，操作前先确认当前目录。
-- `docker/docker-compose.yml` 只验证过 `docker compose config` 能解析（带占位环境变量），**尚未实际 `up` 启动容器**。
-- 第 5 节版本号只在各个 `package.json` 里固化（`pnpm-lock.yaml` 已生成）；M1 引入框架依赖时需重新核对并记录升级。
+- `docker/docker-compose.yml` 的 `postgres` 服务已实际 `up` 并跑过迁移（`xsu-postgres`，healthcheck healthy，宿主端口 5433）；同文件的 `redis` 服务尚未启动过 —— M1 不需要缓存与队列，M2 引入 BullMQ 时再验。
+- 第 5 节的版本号已在 M1 从 npm registry 实查后固化到各 `package.json`，实查结果记在 `docs/CHANGELOG.md`；新增依赖（M2 起：BullMQ、ioredis、TanStack Query / Table、recharts）时需重新核对并记录。
 - `packages/core` 的 ≥80% 分支覆盖率要求尚无工具支撑：`@vitest/coverage-v8` 刻意未安装，等 M2 有真实领域代码再接入。
 - Markdown（含 A 级文档）不参与 Prettier 检查，见 `.prettierignore`；格式靠人工维持。
-- 第 8 节仅剩机房位置一项待决；OAuth 提供方与账号关联策略已定，但尚无实现。
+- 第 8 节仅剩机房位置一项待决；OAuth 提供方与账号关联策略已定，并在 M1 按该结论实现（不自动关联账号、绑定须已登录后主动发起），但尚无运行时验证。
