@@ -1,9 +1,10 @@
 # 提交级检查。对应 AGENTS.md 第 7 节的「提交级」要求，
 # 以及 docs/ROADMAP.md M0 的「CI：tsc / ESLint / Prettier / Vitest 可运行」。
 #
-# 这里只跑不需要外部服务的检查：
-# - Playwright 与 axe 属于 PR 级，随 M1 的页面一起加；
-# - k6 属于里程碑级，不放进每次提交。
+# 两个 job：
+# - `verify`：不需要任何外部服务的提交级检查（tsc / ESLint / Prettier / Vitest）；
+# - `e2e`：PR 级的 Playwright 主流程与 axe，需要 Postgres，因此自己起一个 service。
+# k6 属于里程碑级，不放进每次提交。
 
 name: CI
 
@@ -55,3 +56,71 @@ jobs:
           POSTGRES_PASSWORD: ci-placeholder
           POSTGRES_DB: xsu
         run: docker compose -f docker/docker-compose.yml config --quiet
+
+  # 与 verify 并行：两边都红时一次就能看到，不必等一个跑完才发现另一个也红。
+  e2e:
+    name: PR 级检查（Playwright / axe）
+    runs-on: ubuntu-latest
+    env:
+      # 仓库根没有 .env（这个文件不入库），服务端配置由 job 级环境变量提供。
+      # BETTER_AUTH_URL 不在其中：playwright.config.ts 的 webServer 会把它覆盖成被测地址。
+      DATABASE_URL: postgres://xsu:ci-placeholder@127.0.0.1:5432/xsu
+      BETTER_AUTH_SECRET: ci-placeholder-secret-not-used-outside-ci
+      # 浏览器二进制的落点在这里钉死，而不是用默认的用户级缓存目录：`playwright install`
+      # 与测试必须指向同一个目录，而 apps/web/e2e/env.ts 只在未设该变量时才自己给默认值。
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/Temp/cache/ms-playwright
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: xsu
+          POSTGRES_PASSWORD: ci-placeholder
+          POSTGRES_DB: xsu
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U xsu -d xsu"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: 安装 Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      # 端到端夹具走真实注册编排落库，所以库结构必须先就位。
+      - name: 跑数据库迁移
+        run: pnpm --filter @xsu/db db:migrate
+
+      # 浏览器包四百多兆，按 lockfile 缓存（@playwright/test 一升版本 hash 就变，自动重装）。
+      - name: 缓存 Playwright 浏览器
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: 安装 Chromium（含系统依赖）
+        run: pnpm --filter @xsu/web exec playwright install --with-deps chromium
+
+      - name: 端到端（Playwright 主流程 + axe）
+        run: pnpm --filter @xsu/web test:e2e
+
+      # 失败时把现场带走：CI 日志里只有一行行 ok / not ok，看不出当时的页面。
+      - name: 上传失败留档
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: Temp/out/playwright
+          retention-days: 7

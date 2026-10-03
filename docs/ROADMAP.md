@@ -48,13 +48,13 @@
 - `pnpm tsc --noEmit` 通过。
 - **不写任何业务代码。**
 
-**待办**
+**已决（不再挂待办）**
 
-- 决定是否启用外部文档流水线工具链对 `AGENTS.md` 的托管区块。**需要用户明确指示，不得自行开启。**
+- **不启用外部文档流水线工具链对 `AGENTS.md` 的托管区块**（2026-10-02，用户明确指示）。理由：本项目的文档纪律已由 [`../AGENTS.md`](../AGENTS.md) 第 6 节自包含地定义（A/B/C 级、同一事实只写一处、每份文档必须有「怎么验证」与「已知债务」、冲突以代码为准、A 级同步是硬门禁），与该工具链区块正文的要求基本重叠；而区块正文引用的模板目录是本机绝对路径（`C:\Users\aiLL\Desktop\project-doc-template`），换机器与 CI 上不成立，且区块由插件生成、不许手工编辑。将来若真要维护那套桌面模板再重新评估。
 
 ### M1 — 鉴权与设计系统
 
-**状态**：五项交付物全部落盘，静态与运行时验证均已实跑。提交级检查链 `pnpm typecheck`、`pnpm lint`、`pnpm format:check`、`pnpm test`（7 个文件 80 个用例）与 `next build` 退出码均为 0（2026-10-02）。构建产出的路由表是 `○ /`、`○ /_not-found`、`ƒ /sign-in`、`ƒ /sign-up`、`ƒ /console`、`ƒ /console/settings`、`ƒ /admin`、`ƒ /api/auth/[...all]` —— 退出标准 1 由此成立：唯一的公开内容页（首页）仍是静态预渲染，公开分区里只有 `/sign-in` 与 `/sign-up` 按请求渲染，而这两个都不是内容页，理由分别写在各自 `page.tsx` 的文件头（登录页：第三方提供方清单来自环境变量、OAuth 失败码必须出现在首屏 HTML；注册页：已登录的人不该看到注册表单）。
+**状态**：五项交付物全部落盘，静态、运行时与 PR 级端到端验证均已实跑。提交级检查链 `pnpm typecheck`、`pnpm lint`、`pnpm format:check`、`pnpm test`（7 个文件 80 个用例）与 `next build` 退出码均为 0（2026-10-02）。构建产出的路由表是 `○ /`、`○ /_not-found`、`ƒ /sign-in`、`ƒ /sign-up`、`ƒ /console`、`ƒ /console/settings`、`ƒ /admin`、`ƒ /api/auth/[...all]` —— 退出标准 1 由此成立：唯一的公开内容页（首页）仍是静态预渲染，公开分区里只有 `/sign-in` 与 `/sign-up` 按请求渲染，而这两个都不是内容页，理由分别写在各自 `page.tsx` 的文件头（登录页：第三方提供方清单来自环境变量、OAuth 失败码必须出现在首屏 HTML；注册页：已登录的人不该看到注册表单）。
 
 **三条退出标准现在都有实测证据**（2026-10-02，本机开发服务 + 真实库 + 真实会话；受保护路由的匿名重定向随后在生产构建上用 `next start` 复测过一遍；脚本在 `Temp/scripts/`，产物在 `Temp/out/`，两者都不入库）：
 
@@ -62,6 +62,8 @@
 - **标准 3**：开发库里一个「邮箱已验证、角色 `user`」的真实账号登录后（cookie `better-auth.session_token`，`get-session` 返回 `role=user`），`GET /admin` 得到 200 与统一拒绝视图（正文含「无法访问」「当前账号没有访问该区域的权限。」与 `403 FORBIDDEN` 对账信息），而 `/console`、`/console/settings` 对同一账号正常开放 —— 控制台对任何合法角色都开放，这里不该出现拒绝页。三个受保护路由的匿名请求一律 `307 → /sign-in`，没有出现「一处 403、一处 404、一处 500」。把该账号在开发库里改成 `role=admin` 后，`/admin` 正常渲染后台外壳，两档视口下的结论与 `(console)` 一致。
 
 这一轮构建与类型检查还实际拦下两个缺陷：`packages/platform/src/registration.ts` 漏了 `getDb` 的 import；`apps/web/features/auth/session.ts` 把 `getAuth()` 写在 `await headers()` 之前 —— 前者立刻校验服务端配置，于是本该动态渲染的 `(console)`/`(admin)` 被当成可预渲染页面，构建机没有生产密钥就直接失败。两处都已修，理由写进了各自文件头。运行时验证阶段又拦下三个静态检查链看不见的缺陷（`.env` 定位、Tailwind 扫描基准、导航命中区），逐条记在 [`CHANGELOG.md`](CHANGELOG.md) 的 M1「修复」段。
+
+**三条退出标准已从「手工实测」升级为可重跑的端到端回归**（2026-10-03）：用例在 `apps/web/e2e/`，命令 `pnpm --filter @xsu/web test:e2e`，本机实跑 32 passed / 5 skipped / 0 failed（跳过项是「构建产物断言与本视口无关，只在 desktop 跑一次」和「触控目标只对触控设备成立」，都是带理由的显式 `test.skip`）；CI 上由 `e2e` job 跑同一批（Postgres service + 迁移），入口见 [`AGENTS.md`](../AGENTS.md) 第 7 节。跑的是**生产构建**（`next build` + `next start -p 3100`）加真实库、真实会话，因此量的是与手工实测同一批事实：`/` 在预渲染清单里且运行期带预渲染标记、`(site)` 除例外表外都必须预渲染且例外表不得过期、`(console)`/`(admin)` 一律不得预渲染；公开页顶栏在 1280px 与 360px 两档都可用、两页在 360px 无横向滚动、移动端可点项 ≥44px、axe 无 serious/critical 违规；三个受保护路由的匿名响应形状完全一致（一律 `307 → /sign-in`）、非管理员访问 `/admin` 渲染统一拒绝视图而同一账号访问 `/console` 与首页正常。
 **目标**：一套可复用的骨架，业务模块只管填内容。
 
 **交付物**
@@ -205,8 +207,8 @@
 - **M7 的备份演练依赖 `docs/DEPLOYMENT.md`，该文件尚未创建。**
 - **容量目标未定死。** 目标用户规模与开放程度相关，等 M2 有真实数字后再回填。
 
-- **M1 的双视口与拒绝响应验证是手工实测，不是可重跑的回归。** 结论与证据见 M1「状态」，但取得方式是在面板浏览器里量测同源 iframe：Playwright 未安装（装依赖需要单独授权），所以这三条退出标准目前挡不住回归——改坏了 CI 不会红。补 PR 级 Playwright（桌面 + 移动两套视口）是 M2 之前的欠账，见 [`AGENTS.md`](../AGENTS.md) 第 7 节的 PR 级要求。
+- **M1 的三条退出标准已有可重跑的回归，但覆盖止于「不需要外部交互的那一半」。** 静态化、双视口导航与无横向滚动、统一拒绝响应都由 `apps/web/e2e/` 的用例守住，改坏了 CI 会红（`e2e` job）。它挡不住四件事：邮箱验证链接的完整往返（夹具直接把 `emailVerified` 置真，理由见 `apps/web/e2e/seed.ts`）、OAuth 回调、真实 SMTP 投递，以及 service worker 的注册/离线/更新提示交互（端到端里被刻意屏蔽，见 [`playwright.config.ts`](../apps/web/playwright.config.ts)）。手工实测的原始证据仍留在上面 M1「状态」里。
 
 - **M1 的邮件只走过「控制台传输」，没接过真实 SMTP。** 本机 `.env` 已写入开发值（`.env` 由 `.gitignore` 排除，字段清单是入库的 `.env.example`），迁移已应用到本地 `xsu-postgres`；注册触发的验证邮件只是把链接打到终端，再由脚本去点。真实 SMTP 投递（含退信、限流、生产密钥轮换）未验证。
 
-- **M1 的 PWA 与 OAuth 都只验证到「不涉及外部交互的那一半」。** PWA：生产构建 + `next start` 下 `/manifest.webmanifest`（`application/manifest+json`，917 B）、`/sw.js`（`application/javascript`，8456 B）、`/offline.html`（3320 B）与 5 个图标（192 / 512 / maskable 192 / maskable 512 / apple-touch-icon，均 `image/png`）全部返回 200，字节数是按 `Accept-Encoding: identity` 请求后读到的 `Content-Length`；但 **service worker 的注册、离线提示与「有新版本」提示的交互没有在浏览器里跑过**。OAuth：本机没有 GitHub / Linux.do 的提供方凭证（`packages/platform` 对没配凭证的提供方整个去掉该键），真实回调与账号绑定流程未跑过。
+- **M1 的 PWA 与 OAuth 都只验证到「不涉及外部交互的那一半」。** PWA：生产构建 + `next start` 下 `/manifest.webmanifest`（`application/manifest+json`，917 B）、`/sw.js`（`application/javascript`，8456 B）、`/offline.html`（3320 B）与 5 个图标（192 / 512 / maskable 192 / maskable 512 / apple-touch-icon，均 `image/png`）全部返回 200，字节数是按 `Accept-Encoding: identity` 请求后读到的 `Content-Length`；但 **service worker 的注册、离线提示与「有新版本」提示的交互没有在浏览器里跑过**——端到端用例里它是被刻意屏蔽的（`serviceWorkers: 'block'`），理由见 [`playwright.config.ts`](../apps/web/playwright.config.ts)。OAuth：本机没有 GitHub / Linux.do 的提供方凭证（`packages/platform` 对没配凭证的提供方整个去掉该键），真实回调与账号绑定流程未跑过。

@@ -6,6 +6,30 @@
 
 ---
 
+## M1 补课 — PR 级端到端回归（2026-10-03）
+
+**状态**：M1 的三条退出标准从「一次性手工实测」升级为可重跑的 Playwright 回归。本机 `pnpm --filter @xsu/web test:e2e` 实跑 32 passed / 5 skipped / 0 failed（跳过项均带显式理由）；CI 新增 `e2e` job。覆盖范围与不覆盖的部分见 [`ROADMAP.md`](ROADMAP.md) M1「状态」与第 5 节。
+
+### 新增
+
+- **端到端资产** `apps/web/e2e/`：`env.ts`（环境基线，含浏览器二进制缓存目录的设定时机）、`seed.ts`（走真实注册编排造出非管理员账号）、`auth.setup.ts`（通过登录页真实登录一次并落盘会话状态）、`public-pages.spec.ts`（双视口导航、360px 无横向滚动、触控目标、axe、主题持久化）、`static-render.spec.ts`（预渲染清单与运行期响应头两处对账）、`admin-access.spec.ts`（统一拒绝响应）。
+- **`apps/web/playwright.config.ts`**：desktop 1280×800 与 mobile 360×800 两个 project（`isMobile` + `hasTouch` + `deviceScaleFactor` 三件套一起给），`setup` project 作为两者依赖；`webServer` 先 `next build` 再 `next start -p 3100`，只覆盖 `BETTER_AUTH_URL`；产物落在 `Temp/out/playwright`。
+- **`apps/web` 的 `test:e2e` 脚本**；**CI 的 `e2e` job**（Postgres service + `pnpm --filter @xsu/db db:migrate` + 浏览器缓存 + `playwright install --with-deps chromium`）；**`AGENTS.md`** 第 2 节新增 `apps/web/e2e` 目录约定、第 7 节 PR 级补上可执行命令。
+
+### 依赖版本（从 npm registry 实查后固化）
+
+| 包 | 版本 |
+| --- | --- |
+| @playwright/test | 1.63.0 |
+| @axe-core/playwright | 4.13.0 |
+
+两者都是 devDependency，不进生产运行时；M7 的 Dockerfile 仍守「builder 装全量、运行镜像只留生产依赖 + `.next` 产物」。浏览器二进制装在仓库内 `Temp/cache/ms-playwright`（已被 `.gitignore` 忽略），不写用户级缓存目录。
+
+### 修复
+
+- `apps/web/e2e/public-pages.spec.ts`：首页用例里的「登录」入口在顶栏（`SessionBadge`）与正文各有一个，`getByRole('link')` 在严格模式下匹配到 2 个元素直接失败；判据改为从 `main` 出发。
+- `apps/web/e2e/static-render.spec.ts`：`x-nextjs-prerender` 这个头 Next 会写两遍，Playwright 把取值拼成 `1, 1`，原断言拿整串比 `'1'` 于是一直红。新增 `headerValues()`（按 `,` 拆开去重），正反两侧（预渲染标记应存在 / 不应存在）改用同一把尺。
+
 ## M1 — 鉴权与设计系统（2026-10-02）
 
 **状态**：交付物全部落盘，提交级检查链、`next build` 与运行时最小验证（真实会话 + 两档真实视口）均已实跑；未验证项见 [`ROADMAP.md`](ROADMAP.md) M1「状态」与第 5 节。

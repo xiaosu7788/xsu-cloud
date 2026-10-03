@@ -2,8 +2,8 @@
 
 本文件是本仓库的强制约束，在本项目范围内优先于通用个人习惯。与 `~/.pi/agent/AGENTS.md` 冲突时以本文件为准；本文件未涉及的，按全局规则执行。
 
-> **当前阶段：M1 鉴权与设计系统已落地；提交级检查链、`next build` 与运行时最小验证（真实会话 + 真实视口）均已实跑。**
-> 已有：pnpm workspace 骨架与全部约定目录、`packages/config` 共享配置、分层铁律 ESLint（含故意的失败用例）、提交级检查链与 CI 工作流、`docker/` 本地 Postgres + Redis；M1 又落下数据层表与迁移、`packages/core` 四条横切规则、`packages/platform`（配置校验 / Better Auth 实例 / 注册编排）、`apps/web` 三个分区外壳与权限守卫、设计系统与双主题、三个响应式原语、PWA 四件套、邀请码注册入口。**登录、邀请码注册、统一拒绝响应与两档视口的布局都已实测**；仍未验证的是 OAuth 回调（本机无提供方凭证）、真实 SMTP 投递、PWA 更新提示在浏览器里的行为，以及双视口的自动化回归（未装 Playwright）。未验证清单见 `docs/ROADMAP.md` 第 5 节。开始任何实现之前，先读 `docs/ARCHITECTURE.md`（分层与边界）与 `docs/PRD.md`（范围与验收）。
+> **当前阶段：M1 鉴权与设计系统已落地；提交级检查链、`next build`、运行时最小验证（真实会话 + 真实视口）与 M1 三条退出标准的端到端回归均已实跑。**
+> 已有：pnpm workspace 骨架与全部约定目录、`packages/config` 共享配置、分层铁律 ESLint（含故意的失败用例）、提交级检查链与 CI 工作流（提交级与 PR 级两个 job）、`docker/` 本地 Postgres + Redis；M1 又落下数据层表与迁移、`packages/core` 四条横切规则、`packages/platform`（配置校验 / Better Auth 实例 / 注册编排）、`apps/web` 三个分区外壳与权限守卫、设计系统与双主题、三个响应式原语、PWA 四件套、邀请码注册入口，以及 `apps/web/e2e` 里的端到端回归。**登录、邀请码注册、统一拒绝响应与两档视口的布局都已实测，且这三条退出标准现在由可重跑的端到端用例守住**（`pnpm --filter @xsu/web test:e2e`，CI 的 `e2e` job 每次都跑）。仍未验证的是 OAuth 回调（本机无提供方凭证）、真实 SMTP 投递、邮箱验证链接的完整往返，以及 PWA 更新提示在浏览器里的行为（端到端里 Service Worker 被刻意屏蔽，理由见 `apps/web/playwright.config.ts`）。未验证清单见 `docs/ROADMAP.md` 第 5 节。开始任何实现之前，先读 `docs/ARCHITECTURE.md`（分层与边界）与 `docs/PRD.md`（范围与验收）。
 
 ---
 
@@ -24,6 +24,7 @@ apps/web/app/(admin)       后台管理
 apps/web/app/api           Route Handlers（薄壳）
 apps/web/components        跨模块共享 UI，含响应式原语
 apps/web/features          按业务模块组织的页面与交互
+apps/web/e2e              Playwright 端到端用例与夹具（PR 级验证，不进生产构建）
 apps/web/public            PWA manifest、图标与 service worker（不经构建的静态资源）
 packages/core              领域层：纯 TypeScript
 packages/integrations      集成层：一个外部系统一个目录
@@ -40,6 +41,10 @@ Temp/                       临时文件与中间产物（已 gitignore，约定
 
 新增目录必须先改本文件。不允许就地新建目录、事后再补文档 —— 上面这些 `apps/web/*` 子目录
 同样在约定之内，不在清单里的（例如 `apps/web/lib`）就是不允许新建的；需要时先在这里加上并说明理由。
+
+`apps/web/e2e` 的理由：端到端用例属于验证资产而不是业务代码，既不能被 `features/` 的模块边界
+绑住，也不能混进 `app/` 路由树；测试配置 `apps/web/playwright.config.ts` 放在包根，与
+`next.config.ts`、`tsconfig.json` 同级。
 
 ## 3. 分层铁律（ESLint 强制，违反即 CI 失败）
 
@@ -144,7 +149,7 @@ Temp/                       临时文件与中间产物（已 gitignore，约定
 ## 7. 验证要求
 
 - **提交级**：`tsc --noEmit`、ESLint、Prettier、Vitest（`packages/core` 分支覆盖 ≥80%）。
-- **PR 级**：Playwright 主流程（桌面 + 移动两套视口）、axe 无 serious 问题、A 级文档同步检查。
+- **PR 级**：Playwright 主流程（桌面 + 移动两套视口）、axe 无 serious 问题、A 级文档同步检查。前两项已实现为 `apps/web/e2e` 下的可重跑用例，命令 `pnpm --filter @xsu/web test:e2e`（要求本地 Postgres 已启动并跑过迁移），CI 的 `e2e` job 跑同一批用例。
 - **周期级**：每周依赖漏洞扫描。
 - **里程碑级**：k6 压测，**真实数字写回 `docs/ARCHITECTURE.md`**。达不到预期就调架构，不调文档。
 

@@ -4,13 +4,13 @@
 
 ---
 
-## ✅ 当前状态：M1 鉴权与设计系统已落地，静态与运行时验证均已实跑
+## ✅ 当前状态：M1 鉴权与设计系统已落地，静态、运行时与端到端验证均已实跑
 
 仓库里已有可运行的工程骨架：pnpm workspace 与全部约定目录、`packages/config` 共享配置（eslint / tsconfig / tailwind）、分层铁律 ESLint 规则（含故意的失败用例）、提交级检查链（ESLint / Prettier / `tsc --noEmit` / Vitest）、CI 工作流，以及 `docker/` 本地 Postgres + Redis。
 
 M1 已落盘：数据层表与迁移（鉴权四表 + 邀请码）、`packages/core` 四条横切规则、`packages/platform`（配置校验、Better Auth 实例、注册编排）、`apps/web` 三个分区外壳（`(site)` / `(console)` / `(admin)`）与权限守卫、设计系统与双主题、`ResponsiveNav` / `ResponsiveTable` / `ResponsiveGallery` 三个响应式原语、PWA 四件套。
 
-**验证到哪一步**：提交级检查链 `pnpm typecheck`、`pnpm lint`、`pnpm format:check`、`pnpm test`（7 个文件 80 个用例）与 `next build` 退出码均为 0；构建路由表里唯一的公开内容页 `/` 仍是静态预渲染，`/sign-in` 与 `/sign-up` 需要按请求渲染而排在动态一侧（两处理由写在各自页面文件头）。运行时也实跑过一次：本地 Postgres（compose 的 `postgres` 服务）跑过迁移，走真实注册与登录拿到会话后，`(console)` 外壳在 360px / 1280px 两档视口下的布局、以及非管理员访问 `(admin)` 得到统一拒绝响应都已实测。**仍未验证的是 OAuth 回调、真实 SMTP 投递、PWA 更新提示在浏览器里的交互，以及这三条退出标准的自动化回归（未装 Playwright）。** 完整清单见 [`docs/ROADMAP.md`](docs/ROADMAP.md) 第 5 节。
+**验证到哪一步**：提交级检查链 `pnpm typecheck`、`pnpm lint`、`pnpm format:check`、`pnpm test`（7 个文件 80 个用例）与 `next build` 退出码均为 0；构建路由表里唯一的公开内容页 `/` 仍是静态预渲染，`/sign-in` 与 `/sign-up` 需要按请求渲染而排在动态一侧（两处理由写在各自页面文件头）。运行时也实跑过一次：本地 Postgres（compose 的 `postgres` 服务）跑过迁移，走真实注册与登录拿到会话后，`(console)` 外壳在 360px / 1280px 两档视口下的布局、以及非管理员访问 `(admin)` 得到统一拒绝响应都已实测。**这三条退出标准现在都是可重跑的端到端回归**：用例在 `apps/web/e2e/`，`pnpm --filter @xsu/web test:e2e` 本机实跑 32 passed / 5 skipped / 0 failed（跳过项各有显式理由），CI 上由 `e2e` job 跑同一批。**仍未验证的是 OAuth 回调、真实 SMTP 投递，以及 PWA 更新提示在浏览器里的交互**（端到端里 Service Worker 被刻意屏蔽，理由见 `apps/web/playwright.config.ts`）。完整清单见 [`docs/ROADMAP.md`](docs/ROADMAP.md) 第 5 节。
 
 ## 这是什么
 
@@ -84,6 +84,12 @@ pnpm format        # Prettier 写入
 pnpm format:check  # Prettier 检查（Markdown 不参与，见 .prettierignore）
 ```
 
+PR 级端到端（需要本地 Postgres 已启动并跑过迁移；Playwright 的浏览器二进制装在仓库内 `Temp/cache/ms-playwright`，首次要先 `pnpm exec playwright install chromium`）：
+
+```bash
+pnpm --filter @xsu/web test:e2e   # 先 next build 再 next start，桌面 1280px 与移动 360px 两套视口
+```
+
 本地依赖服务（需要 Docker；compose 的 `postgres` 服务已实际启动并跑过迁移，`redis` 尚未启动）：
 
 ```bash
@@ -95,7 +101,7 @@ Compose 不给这三个变量任何默认值：缺失时直接报错，避免用
 
 应用本体还需要仓库根的一个 `.env`：字段清单见入库的 `.env.example`，必填项缺失时服务端启动即报错（不给默认值）。本机 `.env` 由 `.gitignore` 排除，不入库。
 
-应用本体已经有脚本：`pnpm --filter @xsu/web dev` / `build` / `start` / `typecheck`；仓库根的 `pnpm typecheck` 已经把它们串进来。
+应用本体已经有脚本：`pnpm --filter @xsu/web dev` / `build` / `start` / `typecheck` / `test:e2e`；仓库根的 `pnpm typecheck` 已经把它们串进来。
 
 远端仓库是 <https://github.com/xiaosu7788/xsu-cloud>，默认分支 `main`；推送需要显式走本地代理，见 [`AGENTS.md`](AGENTS.md) 已知债务。
 
@@ -107,8 +113,7 @@ Compose 不给这三个变量任何默认值：缺失时直接报错，避免用
 
 ## 已知债务
 
-- 文档描述的系统**大部分还不存在**：M1 的代码已落地，三条退出标准各有一次运行时实测证据（见 [`docs/ROADMAP.md`](docs/ROADMAP.md) M1「状态」），但这些证据是手工取得的、不可重跑，挡不住回归；除这三条之外的业务验收标准仍属承诺而非证据。
+- 文档描述的系统**大部分还不存在**：M1 的代码已落地，三条退出标准由 `apps/web/e2e` 的端到端用例守住（可重跑，CI 上跑）；除这三条之外的业务验收标准仍属承诺而非证据。
 - 工程侧的未验证项（`redis` 未启动、覆盖率工具未接入）与推送所需的网络条件集中记在 [`AGENTS.md`](AGENTS.md)「已知债务」；此处不重复。
 - Markdown 不参与 Prettier 检查（见 `.prettierignore`），格式靠人工维持。
 - `docs/PRD.md` 第 5 节仅剩「机房位置」一项待决；OAuth 提供方与账号关联策略已定，并在 M1 按该结论实现（不自动关联账号、绑定须已登录后主动发起），但本机没有提供方凭证，该流程尚无运行时验证。
-- 尚未决定是否启用外部文档流水线工具链对 `AGENTS.md` 的托管区块，见 `docs/ROADMAP.md` M0 待办。
