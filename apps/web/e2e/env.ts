@@ -77,6 +77,23 @@ export const PORT = 3100;
 export const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 /**
+ * 被测应用的自身地址。
+ *
+ * 服务端配置校验要求这一项存在（`packages/platform/src/env.ts` 的 `BETTER_AUTH_URL`），
+ * 而它有两个消费者，且分别在两个进程里：被测服务本身，以及 **Playwright 自己的进程**
+ * （`setup` 夹具走真实注册编排落库，要先构造 Better Auth 实例）。`playwright.config.ts` 的
+ * `webServer.env` 只覆盖前者的进程，后者在仓库根没有 `.env` 时（CI 就是这样）拿不到值，
+ * 于是夹具在开工之前就被配置校验拦下——2026-10-03 的 CI 就是这么红的。
+ *
+ * 所以按 `PLAYWRIGHT_BROWSERS_PATH` 的同一套办法处理：模块被求值时就补上，已经显式设过的
+ * 值不覆盖。本模块被 `playwright.config.ts` 放在第一条 import、也被夹具直接 import，
+ * 因此两个进程都会走到这里。
+ */
+if (!process.env.BETTER_AUTH_URL) {
+  process.env.BETTER_AUTH_URL = BASE_URL;
+}
+
+/**
  * 两档视口。`docs/PRD.md` 4.1 要求 360px 宽不出现横向滚动，`docs/ROADMAP.md` M1
  * 退出标准 2 要求桌面与移动视口下导航都可用，因此两档都必须真跑，不能只跑宽屏。
  */

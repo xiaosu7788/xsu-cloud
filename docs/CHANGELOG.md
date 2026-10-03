@@ -45,6 +45,7 @@
 
 - `docs/TESTING.md` 的队列手工回归原引用 `Temp/` 下的草稿脚本 —— Temp 不入库，别人照做必然找不到文件。改为仓库内的 `scripts/enqueue-manual-jobs.ts`。
 - `apps/web/playwright.config.ts`：setup project 原来点名 `/auth\.setup\.ts/`。新增 `tools.setup.ts` 后若不改，它会**静默地跑进 desktop 与 mobile 两个 project** —— 夹具是写库的，并发重入会互相删掉对方刚造的记录，用例于是以「这条 id 不存在」的方式假通过。改按 `/\.setup\.ts$/` 匹配，并把这条理由写进配置。
+- **CI 上的端到端夹具读不到 `BETTER_AUTH_URL`，`e2e` job 从加进来那一刻起就是红的。** 该值原先只在 `apps/web/playwright.config.ts` 的 `webServer.env` 里给，而 `setup` 夹具（走真实注册编排，需先构造 Better Auth 实例）跑在 **Playwright 自己的进程**里：仓库根没有 `.env`（CI 正是如此）时它拿不到值，夹具在开工前就被服务端配置校验拦下。改为在 `apps/web/e2e/env.ts` 里按 `PLAYWRIGHT_BROWSERS_PATH` 的同一套办法补上（已显式设过则不覆盖），`webServer.env` 保留。**本地一直没暴露**，因为根 `.env` 里有这一项。
 
 ## M1 补课 — PR 级端到端回归（2026-10-03）
 

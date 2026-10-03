@@ -82,9 +82,10 @@ pnpm --filter @xsu/web test:e2e
 `playwright.config.ts` 的 `webServer` 会**先 `next build` 再 `next start`**——这不是「页面能打开」的冒烟，
 静态预渲染这类事实在 `next dev` 下根本无从判断。
 
-配置的三件关键事（理由写在 `apps/web/playwright.config.ts` 与 `apps/web/e2e/env.ts` 的文件头，此处不复制）：
+配置的四件关键事（理由写在 `apps/web/playwright.config.ts` 与 `apps/web/e2e/env.ts` 的文件头，此处不复制）：
 两套视口做成两个 project 而不是用例里 `setViewportSize()`；`setup` project 只跑夹具；
-端到端里屏蔽 Service Worker。
+端到端里屏蔽 Service Worker；环境基线（浏览器缓存目录与 `BETTER_AUTH_URL`）由 `e2e/env.ts` 一处设定，
+它同时作用于夹具所在的 Playwright 进程与被测服务——CI 上没有根 `.env`，这一项不可省。
 
 ### 3.1 用例清单
 
