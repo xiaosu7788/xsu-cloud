@@ -1,8 +1,8 @@
 /**
  * 控制台首页。
  *
- * 内容严格按现状写：M1 还没有任何业务模块，所以这里不给任何指向不存在页面的入口。
- * 列出排期中的模块并明写「尚未开放」，比放一个点进去 404 的链接诚实——这条约束见
+ * 内容严格按现状写：这里只指向**真的存在**的页面。M1 落地了账号，M2 落地了工具箱；其余模块
+ * 列在下面并明写「尚未开放」——比放一个点进去 404 的链接诚实，这条约束见
  * `features/auth/routes.ts` 文件头。
  *
  * 本页**不读会话**：它没有任何需要用户信息的地方，而布局已经把登录态与用户信息处理完了。
@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 import { CONSOLE_SETTINGS } from '@/features/auth/routes';
+import { CONSOLE_TOOLS, CONSOLE_TOOLS_RUNS, TOOLS_HOME } from '@/features/tools/routes';
 
 export const metadata: Metadata = {
   title: '控制台',
@@ -32,10 +33,27 @@ export default function ConsoleHomePage() {
       <section className="flex flex-col gap-2">
         <h1 className="text-xl font-semibold tracking-tight md:text-2xl">控制台</h1>
         <p className="text-sm text-muted-foreground">
-          M1 阶段这里只有账号相关的东西。模块从 M2 起逐个接进来。
+          账号与工具箱在这里。其余模块从 M4 起逐个接进来，还没落地的都列在最下面。
         </p>
       </section>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>工具箱</CardTitle>
+          <CardDescription>
+            一批不依赖外部服务的在线小工具。公开清单在 {TOOLS_HOME}，执行需要登录——每次执行都
+            在运行历史里留一条记录，只有本人能看到。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-3">
+          <Button asChild>
+            <Link href={CONSOLE_TOOLS}>进入工具箱</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href={CONSOLE_TOOLS_RUNS}>运行历史</Link>
+          </Button>
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle>账号</CardTitle>

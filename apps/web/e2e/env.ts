@@ -109,6 +109,20 @@ export const NON_ADMIN = {
 } as const;
 
 /**
+ * 端到端专用账号：他人。
+ *
+ * 存在的唯一理由是 M2 的跨用户验收（`docs/PRD.md` 3.3 验收 4「用户只能看到自己的运行历史」）：
+ * 「别人的记录打不开」需要库里真的躺着一条别人的记录，否则用例验的是「这个 id 不存在」，
+ * 而不是「这条记录不属于你」。由 `e2e/tools-seed.ts` 走真实注册编排建出来，
+ * **从不登录**，所以不需要 `emailVerified`（`./seed.ts` 文件头里那条例外在这里不存在）。
+ */
+export const OTHER_USER = {
+  name: 'e2e 他人',
+  email: 'e2e-other@example.com',
+  password: 'e2e-other-password',
+} as const;
+
+/**
  * 端到端产物的落点。
  *
  * 放在 `Temp/out/` 而不是 `apps/web/test-results`：`AGENTS.md` 第 2 节已经把 `Temp/`
@@ -122,3 +136,12 @@ export const PLAYWRIGHT_ARTIFACTS = join(REPO_ROOT, 'Temp', 'out', 'playwright')
 
 /** 登录后的会话状态落盘位置。由 `e2e/auth.setup.ts` 写入，由需要的用例读入。 */
 export const NON_ADMIN_STORAGE = join(PLAYWRIGHT_ARTIFACTS, 'auth', 'non-admin.json');
+
+/**
+ * 他人运行记录坐标的落盘位置。
+ *
+ * 由 `e2e/tools.setup.ts` 写入，由 `e2e/tools.spec.ts` 读入。**不能在用例里现造**：
+ * desktop / mobile 两个 project 会并发跑同一份用例，两边各自「先删后建」那个他人账号时，
+ * 一边刚造出来的记录会被另一边删掉——用例于是会以「这条 id 不存在」的方式通过。
+ */
+export const FOREIGN_TOOL_RUN_FILE = join(PLAYWRIGHT_ARTIFACTS, 'tools', 'foreign-run.json');

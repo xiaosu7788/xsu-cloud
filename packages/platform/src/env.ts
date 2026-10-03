@@ -22,6 +22,8 @@ import { join, parse, resolve } from 'node:path';
 
 import { z } from 'zod';
 
+import { TOOL_QUOTA_PER_HOUR_DEFAULT, TOOL_RUN_RETENTION_DAYS_DEFAULT } from '@xsu/core';
+
 /** OAuth 提供方 id。与 Better Auth 的 `providerId` 一致，前端按钮也按它索引。 */
 export type OAuthProviderId = 'github' | 'linuxdo';
 
@@ -59,6 +61,21 @@ export type ServerEnv = {
       userInfoUrl: string;
     };
   };
+  /**
+   * Redis 连接串。**M2 起是必填项**：队列已经是应用的硬依赖——注册验证邮件由 worker 发送，
+   * Redis 不可达时注册路径会失败。不给默认值兜底，理由与密钥相同：默认值 `redis://localhost:6379`
+   * 在开发机上恰好能用，到了生产会静默指向一个不存在的实例。
+   */
+  redis: {
+    url: string;
+  };
+  /** 工具箱的运行时配置。两项都能用环境变量覆盖，缺省值来自领域层常量。 */
+  tools: {
+    /** 单用户每小时的执行上限。**0 表示关闭执行**，不是「不限」。 */
+    quotaPerHour: number;
+    /** 运行历史的保留天数，`maintenance.cleanup` 按它删旧记录。 */
+    retentionDays: number;
+  };
 };
 
 /**
@@ -70,6 +87,20 @@ export type ServerEnv = {
 const optionalText = z.preprocess(
   (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
   z.string().trim().min(1).optional(),
+);
+
+/**
+ * 可选的非负整数配置。
+ *
+ * 与 `optionalText` 同一件事：`.env` 里留空是一把空串而不是缺键，必须先归一成 `undefined`。
+ * 这里比文本更要紧——`Number('') === 0`，`z.coerce.number()` 会把「没配」读成 0，
+ * 而 0 在这一项上是有确切含义的（关闭工具执行），配置手滑一次就把工具台整体关掉了。
+ *
+ * 上限只为拦住「多打了几个零」这类明显错误，不是容量评估的结论。
+ */
+const optionalCount = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.coerce.number().int().min(0).max(1_000_000).optional(),
 );
 
 const envSchema = z.object({
@@ -95,6 +126,15 @@ const envSchema = z.object({
   LINUXDO_AUTHORIZATION_URL: optionalText,
   LINUXDO_TOKEN_URL: optionalText,
   LINUXDO_USERINFO_URL: optionalText,
+  /**
+   * 队列的 Redis 连接串。协议限 redis / rediss：`localhost:6379` 这种能被 `new URL()` 解析
+   * （`localhost:` 被当成协议名），与本文件对 `BETTER_AUTH_URL` 的处理同一理由。
+   */
+  REDIS_URL: z.url({ protocol: /^rediss?$/ }),
+  /** 单用户每小时的工具执行上限。留空用领域层默认值；显式写 0 表示关闭执行，不再是默认值。 */
+  TOOL_RUN_QUOTA_PER_HOUR: optionalCount,
+  /** 运行历史保留天数。留空用领域层默认值。 */
+  TOOL_RUN_RETENTION_DAYS: optionalCount,
 });
 
 /** 必须成对出现的凭证。只填一半的配置会在第一次登录时才炸，所以在这里拦下。 */
@@ -191,6 +231,17 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
       secret: value.BETTER_AUTH_SECRET,
     },
     oauth,
+    redis: {
+      url: value.REDIS_URL,
+    },
+    /*
+     * 缺省值来自领域层常量而不是写在这里：配额上限是「单用户单位时间能执行几次」这条业务规则
+     * 的一部分，默认值必须与 `runTool` 的说法一致，不能有第二个事实来源。
+     */
+    tools: {
+      quotaPerHour: value.TOOL_RUN_QUOTA_PER_HOUR ?? TOOL_QUOTA_PER_HOUR_DEFAULT,
+      retentionDays: value.TOOL_RUN_RETENTION_DAYS ?? TOOL_RUN_RETENTION_DAYS_DEFAULT,
+    },
   };
 }
 

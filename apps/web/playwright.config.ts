@@ -83,15 +83,20 @@ export default defineConfig({
   },
   projects: [
     {
-      /* 只跑登录夹具：造账号 + 登录一次 + 把会话状态落盘，供后面两个 project 使用。 */
+      /*
+       * 只跑夹具：`auth.setup.ts` 造账号并登录一次、`tools.setup.ts` 造出一条他人运行记录，
+       * 两者都把结果落盘供后面两个 project 读。按 `\.setup\.ts$` 匹配而不是点名某个文件：
+       * 新增夹具时忘改这里，它会**静默地跑进 desktop 与 mobile 两个 project**——夹具是写库的，
+       * 并发重入正是它们被放进 setup 的理由（见 `e2e/tools.setup.ts` 文件头）。
+       */
       name: 'setup',
-      testMatch: /auth\.setup\.ts/,
+      testMatch: /\.setup\.ts$/,
     },
     {
       name: 'desktop',
       use: { viewport: VIEWPORTS.desktop },
       dependencies: ['setup'],
-      testIgnore: /auth\.setup\.ts/,
+      testIgnore: /\.setup\.ts$/,
     },
     {
       name: 'mobile',
@@ -107,7 +112,7 @@ export default defineConfig({
         deviceScaleFactor: MOBILE_DEVICE_SCALE_FACTOR,
       },
       dependencies: ['setup'],
-      testIgnore: /auth\.setup\.ts/,
+      testIgnore: /\.setup\.ts$/,
     },
   ],
   webServer: {

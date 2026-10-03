@@ -30,9 +30,14 @@ import { SITE_HOME } from '@/features/auth/routes';
 /**
  * 顶栏链接。
  *
- * 只放**确实存在**的公开页：目前只有首页。写一个指向 `/community` 的入口而去访问一个
- * 404，比少一个入口严重得多——「导航里出现的每个路径都必须真的有一个页面」是一条靠人工
- * review 维持的约束，见 `features/auth/routes.ts` 文件头。
+ * 只放**确实存在**的公开页。写一个指向 `/community` 的入口而去访问一个 404，比少一个入口
+ * 严重得多——「导航里出现的每个路径都必须真的有一个页面」是一条靠人工 review 维持的约束，
+ * 见 `features/auth/routes.ts` 文件头。
+ *
+ * 工具箱（M2）的入口**暂时不在这里**，而在首页正文的「工具箱」按钮上：顶栏多出一个链接就
+ * 意味着公开入口达到两个，按 `components/site-nav.tsx` 文件头写下的条件要同时补移动端壳，
+ * 那件事与社区的公开入口一起做，不在 M2 的范围里。`docs/spec/SPEC-tools.md` 第 6 节对此只
+ * 要求「首页补上 `/tools` 入口」。
  */
 const SITE_NAV_ITEMS = [{ href: SITE_HOME, label: '首页', exact: true }] as const;
 

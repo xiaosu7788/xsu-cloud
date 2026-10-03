@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { TOOL_QUOTA_PER_HOUR_DEFAULT, TOOL_RUN_RETENTION_DAYS_DEFAULT } from '@xsu/core';
+
 import { enabledOAuthProviders, parseServerEnv } from '../src/env';
 
 /**
@@ -8,23 +10,25 @@ import { enabledOAuthProviders, parseServerEnv } from '../src/env';
  */
 const SECRET = 'test-secret-0123456789-0123456789-abcd';
 
-/** 最小可用配置：只要鉴权三项。OAuth 全部留空意味着两个提供方都不启用。 */
+/** 最小可用配置：鉴权三项 + 队列的 Redis 地址。OAuth 全部留空意味着两个提供方都不启用。 */
 function baseEnv(overrides: Record<string, string | undefined> = {}) {
   return {
     NODE_ENV: 'development',
     BETTER_AUTH_URL: 'http://localhost:3000',
     BETTER_AUTH_SECRET: SECRET,
+    REDIS_URL: 'redis://localhost:6379',
     ...overrides,
   } satisfies Record<string, string | undefined>;
 }
 
 describe('parseServerEnv：最小可用配置', () => {
-  it('解析出鉴权配置，且两个 OAuth 提供方都不存在', () => {
+  it('解析出鉴权与队列配置，且两个 OAuth 提供方都不存在', () => {
     const env = parseServerEnv(baseEnv());
 
     expect(env.nodeEnv).toBe('development');
     expect(env.isProduction).toBe(false);
     expect(env.auth).toEqual({ baseUrl: 'http://localhost:3000', secret: SECRET });
+    expect(env.redis).toEqual({ url: 'redis://localhost:6379' });
     // 没有提供方时是「键不存在」，不是「键为 undefined」——调用方按 `'github' in oauth` 判断。
     expect('github' in env.oauth).toBe(false);
     expect('linuxdo' in env.oauth).toBe(false);
@@ -40,6 +44,7 @@ describe('parseServerEnv：最小可用配置', () => {
     const env = parseServerEnv({
       BETTER_AUTH_URL: 'http://localhost:3000',
       BETTER_AUTH_SECRET: SECRET,
+      REDIS_URL: 'redis://localhost:6379',
     });
 
     expect(env.nodeEnv).toBe('development');
@@ -92,6 +97,56 @@ describe('parseServerEnv：必填项', () => {
 
   it('报错里带上 .env.example 这条线索，并逐条列出问题', () => {
     expect(() => parseServerEnv({})).toThrow(/\.env\.example/);
+  });
+
+  it('缺 REDIS_URL 就抛错：队列是 M2 起的硬依赖，不给 localhost 兜底', () => {
+    expect(() => parseServerEnv(baseEnv({ REDIS_URL: undefined }))).toThrow(/REDIS_URL/);
+  });
+
+  it('REDIS_URL 必须带 redis / rediss 协议', () => {
+    // 与 BETTER_AUTH_URL 同一理由：`new URL('localhost:6379')` 合法（`localhost:` 当协议名），
+    // 少写协议头的配置能通过校验，直到 worker 启动才连不上。
+    expect(() => parseServerEnv(baseEnv({ REDIS_URL: 'localhost:6379' }))).toThrow(/REDIS_URL/);
+    expect(() => parseServerEnv(baseEnv({ REDIS_URL: 'https://redis.example.com' }))).toThrow(
+      /REDIS_URL/,
+    );
+    expect(
+      parseServerEnv(baseEnv({ REDIS_URL: 'rediss://user:pass@redis.example.com:6380' })).redis,
+    ).toEqual({ url: 'rediss://user:pass@redis.example.com:6380' });
+  });
+});
+
+describe('parseServerEnv：工具执行配置', () => {
+  it('留空时用领域层的默认值，不在配置层写第二份说法', () => {
+    const env = parseServerEnv(
+      baseEnv({ TOOL_RUN_QUOTA_PER_HOUR: '', TOOL_RUN_RETENTION_DAYS: '' }),
+    );
+
+    expect(env.tools).toEqual({
+      quotaPerHour: TOOL_QUOTA_PER_HOUR_DEFAULT,
+      retentionDays: TOOL_RUN_RETENTION_DAYS_DEFAULT,
+    });
+  });
+
+  it('未配置与显式写 0 是两回事：0 表示关闭工具执行', () => {
+    // `Number('') === 0`，所以用 `z.coerce.number()` 会把「没配」读成 0，
+    // 等于手滑一次就把工具台整体关掉。这条用例钉住这个区别。
+    expect(parseServerEnv(baseEnv({ TOOL_RUN_QUOTA_PER_HOUR: '' })).tools.quotaPerHour).toBe(
+      TOOL_QUOTA_PER_HOUR_DEFAULT,
+    );
+    expect(parseServerEnv(baseEnv({ TOOL_RUN_QUOTA_PER_HOUR: '0' })).tools.quotaPerHour).toBe(0);
+    expect(parseServerEnv(baseEnv({ TOOL_RUN_QUOTA_PER_HOUR: '120' })).tools.quotaPerHour).toBe(
+      120,
+    );
+  });
+
+  it('把「多打了几个零」和负数拦住', () => {
+    expect(() => parseServerEnv(baseEnv({ TOOL_RUN_QUOTA_PER_HOUR: '-1' }))).toThrow(
+      /TOOL_RUN_QUOTA_PER_HOUR/,
+    );
+    expect(() => parseServerEnv(baseEnv({ TOOL_RUN_QUOTA_PER_HOUR: '99999999' }))).toThrow(
+      /TOOL_RUN_QUOTA_PER_HOUR/,
+    );
   });
 });
 

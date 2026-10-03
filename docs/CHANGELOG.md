@@ -6,6 +6,46 @@
 
 ---
 
+## M2 — 工具箱与 worker 基础设施（2026-10-03）
+
+**状态**：交付物全部落盘；提交级检查链、生产构建、端到端回归（双视口）与 k6 容量实测都已实跑。三条退出标准的证据见 [`ROADMAP.md`](ROADMAP.md) M2「状态」，容量真实数字见 [`ARCHITECTURE.md`](ARCHITECTURE.md) 第 8 节，验证方法与手工回归步骤见 [`TESTING.md`](TESTING.md)。
+
+### 新增
+
+- **数据层** `packages/db`：`tool_runs` / `tool_favorites` 两张表（schema + 迁移 `0001_tools_tables.sql`）与仓储 `repositories/tools.ts`（配额窗口计数、写入、分页列表、单条读取、收藏增删、按保留期删运行历史、删过期会话）。
+- **领域层** `packages/core/src/tools/`：`registry.ts`（代码内工具目录，模块加载即拒绝重复 slug）、`builtin.ts`（`json-format` / `text-stats` / `base64` / `hash` 四支纯函数，后两支标记 `sensitive`）、`run-tool.ts`（`runTool` 主流程「查目录 → 校验 → 配额 → 执行 → 落历史」、`TOOL_FAILURE` 错误码表、`buildRunSummary` 摘要截断与脱敏、`decideToolRunAccess` 归属判定）、`types.ts`。
+- **平台层** `packages/platform`：`queue.ts`（BullMQ：生产者快速失败与消费者不断连的连接策略、任务名常量、可脱离 Redis 单测的 `dispatchJob`、每天 04:00 UTC 的清理调度、`createQueuedMailTransport`）、`maintenance.ts`（`cleanupCutoffs` 纯函数 + `runMaintenanceCleanup`）、`tools.ts`（把领域层端口接到数据层）；`env.ts` 新增 `REDIS_URL` / `TOOL_RUN_QUOTA_PER_HOUR` / `TOOL_RUN_RETENTION_DAYS`。
+- **worker 基础设施首次落地** `apps/web/worker/`：`index.ts`（独立进程入口，`pnpm --filter @xsu/web worker`；同镜像不同 command，不监听端口；SIGTERM / SIGINT 优雅收尾，未捕获异常退出码 1）、`handlers.ts`（`mail.send` 与 `maintenance.cleanup` 的实现）。
+- **表现层** `apps/web`：`/tools`（公共分区，预渲染）与 `/console/tools`、`/console/tools/[slug]`、`/console/tools/runs`、`/console/tools/runs/[id]`（控制台分区，动态）；`features/tools/` 的 `routes.ts` / `form-fields.ts` / `format.ts` / `run-form.tsx` / `run-state.ts`；`components/ui/select.tsx` 与 `textarea.tsx`。
+- **端到端** `apps/web/e2e/`：`tools-seed.ts`（走真实注册编排造出「他人」账号及其运行记录）、`tools.setup.ts`、`tools.spec.ts`；`env.ts` 增 `OTHER_USER` 与 `FOREIGN_TOOL_RUN_FILE`。
+- **运维脚本** `scripts/enqueue-manual-jobs.ts`：手工入队一条邮件任务与一条清理任务，配合 worker 做队列手工回归（步骤见 [`TESTING.md`](TESTING.md) 第 5 节）；根 `tsconfig.json` 的 `include` 加上 `scripts/**/*.ts`，让脚本进 `tsc --noEmit`。
+- **文档** [`TESTING.md`](TESTING.md) 建立：提交级 / PR 级 / 周期级 / 里程碑级各验什么、外部集成的测试形态、队列与清理任务的手工回归步骤。
+
+### 依赖版本（从 npm registry 实查后固化）
+
+| 包 | 版本 |
+| --- | --- |
+| bullmq | 6.3.11 |
+| ioredis | 6.0.0 |
+| @vitest/coverage-v8 | 5.0.2 |
+| tsx | 4.23.15 |
+| @tanstack/react-query | 5.104.1 |
+| @tanstack/react-table | 9.2.4 |
+
+`bullmq` / `ioredis` 装在 `packages/platform`；`tsx` 是 `apps/web` 的 devDependency（worker 与脚本的运行时）；`@vitest/coverage-v8` 在仓库根。**最后两项零引用，见「已知债务」。**
+
+### 行为变化
+
+- **注册验证邮件从「请求内同步发」改为「入队后由 worker 发」。** 代价是注册成功不再等于邮件已发出；发送失败进队列重试（attempts 3 + 指数退避 5s）。契约见 [`INTEGRATIONS.md`](INTEGRATIONS.md) 第 4 节。
+- **过期会话与超期的运行历史开始被删除**：`maintenance.cleanup` 每天 04:00（UTC）跑一次，两条删除各自独立、幂等（[`DATA-MODEL.md`](DATA-MODEL.md) 3.6）。
+- **`vitest.config.ts` 启用 `packages/core` 分支覆盖率门槛 80%**，配套接入 `@vitest/coverage-v8`；实测分支覆盖率 98%。
+- **CI 的 `e2e` job 多了一个 Redis service**：端到端夹具走真实注册编排，注册链路现在依赖队列。
+
+### 修复
+
+- `docs/TESTING.md` 的队列手工回归原引用 `Temp/` 下的草稿脚本 —— Temp 不入库，别人照做必然找不到文件。改为仓库内的 `scripts/enqueue-manual-jobs.ts`。
+- `apps/web/playwright.config.ts`：setup project 原来点名 `/auth\.setup\.ts/`。新增 `tools.setup.ts` 后若不改，它会**静默地跑进 desktop 与 mobile 两个 project** —— 夹具是写库的，并发重入会互相删掉对方刚造的记录，用例于是以「这条 id 不存在」的方式假通过。改按 `/\.setup\.ts$/` 匹配，并把这条理由写进配置。
+
 ## M1 补课 — PR 级端到端回归（2026-10-03）
 
 **状态**：M1 的三条退出标准从「一次性手工实测」升级为可重跑的 Playwright 回归。本机 `pnpm --filter @xsu/web test:e2e` 实跑 32 passed / 5 skipped / 0 failed（跳过项均带显式理由）；CI 新增 `e2e` job。覆盖范围与不覆盖的部分见 [`ROADMAP.md`](ROADMAP.md) M1「状态」与第 5 节。
@@ -93,6 +133,8 @@
 
 ## 已知债务
 
-- **M0 与 M1 的条目是里程碑收尾时一次性补写的**，不是逐 PR 增量记录 —— 这两段的时间线因此不可信，只能当作「包含哪些内容」的索引。M2 起应按 PR 追加。
+- **M0、M1 与 M2 的条目都是里程碑收尾时一次性补写的**，不是逐 PR 增量记录 —— 这三段的时间线因此不可信，只能当作「包含哪些内容」的索引。「M2 起应按 PR 追加」这句承诺到 M2 仍未兑现。
 - 本文件不记录被否决的方案与理由，那属于 `docs/ADR/`（尚未建立，见 [`ROADMAP.md`](ROADMAP.md) 第 5 节）。
 - M1 段落里的「状态」与 [`ROADMAP.md`](ROADMAP.md) 存在同一事实的两处表述，属待清理的重复；目前以 `ROADMAP.md` 为准。
+- **`@tanstack/react-query` 与 `@tanstack/react-table` 已安装但零引用。** 两者在 [`../AGENTS.md`](../AGENTS.md) 第 5 节的技术栈里，M1 的条目把引入点写成「留给 M2」，于是 M2 装了。**装了不用是负担**：会进生产镜像、会随版本漂移、会让人以为已经在用。要么在 M3 后台管理里真正用上，要么在 M3 开工前卸掉，不允许一直挂着。
+- **`recharts` 是上一条的反例。** M1 的条目同样把它「留给 M2」，M2 判断它的真实用途是后台看板（M5），于是**没有**安装 —— 技术栈表里的包不等于每个里程碑都要装。这一条留在这里是为了防止有人照着 M1 的清单把它补装进来。

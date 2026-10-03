@@ -26,7 +26,7 @@
  * 唯一入口，不能从清单里删。
  */
 import Link from 'next/link';
-import { Gauge, Settings } from 'lucide-react';
+import { Gauge, Settings, Wrench } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { ResponsiveNav, type NavItem } from '@/components/responsive-nav';
@@ -36,12 +36,15 @@ import { AccountPanel } from '@/features/auth/account-panel';
 import { redirectToSignInIfUnauthenticated } from '@/features/auth/guard';
 import { CONSOLE_HOME, CONSOLE_SETTINGS, SITE_HOME } from '@/features/auth/routes';
 import { readConsoleAccess } from '@/features/auth/session';
+import { CONSOLE_TOOLS } from '@/features/tools/routes';
 
 /**
  * 控制台入口。
  *
- * 现在只有两项，都是 M1 真实存在的页面。中转站入口与「我的任务」排在 M4，落地时加在这里
- * ——在导航里写一个还没有页面的路径，用户点进去只会看到 404。
+ * 每一项都必须真的有一个页面——这条约束靠人工 review，见 `features/auth/routes.ts` 文件头。
+ * 目前三项：`/console` 与 `/console/settings` 是 M1 的，工具箱是 M2 的。中转站入口与
+ * 「我的任务」排在 M4 / M6，落地时加在这里——在导航里写一个还没有页面的路径，用户点进去
+ * 只会看到 404。
  */
 const CONSOLE_NAV_ITEMS: readonly NavItem[] = [
   {
@@ -50,6 +53,11 @@ const CONSOLE_NAV_ITEMS: readonly NavItem[] = [
     icon: <Gauge aria-hidden className="size-5" />,
     /* `/console` 同时是 `/console/settings` 的前缀，不精确匹配就会两项一起高亮。 */
     exact: true,
+  },
+  {
+    href: CONSOLE_TOOLS,
+    label: '工具箱',
+    icon: <Wrench aria-hidden className="size-5" />,
   },
   {
     href: CONSOLE_SETTINGS,

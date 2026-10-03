@@ -7,6 +7,10 @@ allowBuilds:
   # （vitest 与 drizzle-kit 的传递依赖，按名字匹配所有版本）。
   # 加新条目必须写明理由，不要整包放行。
   esbuild: true
+  # msgpackr-extract 是 bullmq → msgpackr 拉来的可选原生加速包（msgpack 的 C++ 实现）。
+  # 显式写 false：不构建时 msgpackr 自动回退到 JS 实现，队列功能不受影响，
+  # 而构建它会把 C++ 工具链带进构建机与生产镜像。写 false 而不是删行，免得 pnpm 反复询问。
+  msgpackr-extract: false
 minimumReleaseAgeExclude:
   - '@better-auth/core@1.7.7'
   - '@better-auth/drizzle-adapter@1.7.7'
@@ -26,6 +30,8 @@ minimumReleaseAgeExclude:
   - '@next/swc-win32-x64-msvc@16.3.8'
   - better-auth@1.7.7
   - next@16.3.8
+  - '@tanstack/query-core@5.104.1'
+  - '@tanstack/react-query@5.104.1'
 
 # pnpm 10+ 默认不执行依赖的构建脚本。这里只放行确实需要的那一个。
 # 加新条目必须写明理由，不要整包放行。

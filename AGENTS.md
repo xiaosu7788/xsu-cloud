@@ -2,8 +2,8 @@
 
 本文件是本仓库的强制约束，在本项目范围内优先于通用个人习惯。与 `~/.pi/agent/AGENTS.md` 冲突时以本文件为准；本文件未涉及的，按全局规则执行。
 
-> **当前阶段：M1 鉴权与设计系统已落地；提交级检查链、`next build`、运行时最小验证（真实会话 + 真实视口）与 M1 三条退出标准的端到端回归均已实跑。**
-> 已有：pnpm workspace 骨架与全部约定目录、`packages/config` 共享配置、分层铁律 ESLint（含故意的失败用例）、提交级检查链与 CI 工作流（提交级与 PR 级两个 job）、`docker/` 本地 Postgres + Redis；M1 又落下数据层表与迁移、`packages/core` 四条横切规则、`packages/platform`（配置校验 / Better Auth 实例 / 注册编排）、`apps/web` 三个分区外壳与权限守卫、设计系统与双主题、三个响应式原语、PWA 四件套、邀请码注册入口，以及 `apps/web/e2e` 里的端到端回归。**登录、邀请码注册、统一拒绝响应与两档视口的布局都已实测，且这三条退出标准现在由可重跑的端到端用例守住**（`pnpm --filter @xsu/web test:e2e`，CI 的 `e2e` job 每次都跑）。仍未验证的是 OAuth 回调（本机无提供方凭证）、真实 SMTP 投递、邮箱验证链接的完整往返，以及 PWA 更新提示在浏览器里的行为（端到端里 Service Worker 被刻意屏蔽，理由见 `apps/web/playwright.config.ts`）。未验证清单见 `docs/ROADMAP.md` 第 5 节。开始任何实现之前，先读 `docs/ARCHITECTURE.md`（分层与边界）与 `docs/PRD.md`（范围与验收）。
+> **当前阶段：M2 工具箱已落地；提交级检查链、生产构建、端到端回归（双视口）与 k6 容量实测均已实跑，`docs/ARCHITECTURE.md` 第 8 节的容量数字不再是 TBD。**
+> 已有：pnpm workspace 骨架与全部约定目录、`packages/config` 共享配置、分层铁律 ESLint（含故意的失败用例）、提交级检查链与 CI 工作流（提交级与 PR 级两个 job）、`docker/` 本地 Postgres + Redis（两个服务都已实际 `up`）；M1 落下数据层表与迁移、`packages/core` 四条横切规则、`packages/platform`（配置校验 / Better Auth 实例 / 注册编排）、`apps/web` 三个分区外壳与权限守卫、设计系统与双主题、三个响应式原语、PWA 四件套、邀请码注册入口，以及 `apps/web/e2e` 里的端到端回归；M2 又落下工具箱（工具目录在代码内的注册表、四支纯函数、运行历史与收藏）、`packages/platform` 的队列与过期清理、`apps/web/worker` 这个**独立 worker 进程**（BullMQ 首次落地）、`docs/TESTING.md`，以及 k6 实测后回填的容量与压测数字。**M1 与 M2 各三条退出标准现在都由可重跑的用例守住**：`pnpm test`（含 `packages/core` 分支覆盖率门槛 80%，实测 98%）与 `pnpm --filter @xsu/web test:e2e`（生产构建 + 真实库 + 双视口），CI 上每次提交都跑。仍未验证的是 OAuth 回调（本机无提供方凭证）、真实 SMTP 投递、邮箱验证链接的完整往返、PWA 更新提示在浏览器里的行为（端到端里 Service Worker 被刻意屏蔽，理由见 `apps/web/playwright.config.ts`），以及 **Redis 的 AOF 在「杀掉 Redis 后任务不丢」这一条上没有实测**（M6 的退出标准依赖它）。未验证清单见 `docs/ROADMAP.md` 第 5 节。开始任何实现之前，先读 `docs/ARCHITECTURE.md`（分层与边界）与 `docs/PRD.md`（范围与验收）。
 
 ---
 
@@ -26,6 +26,7 @@ apps/web/components        跨模块共享 UI，含响应式原语
 apps/web/features          按业务模块组织的页面与交互
 apps/web/e2e              Playwright 端到端用例与夹具（PR 级验证，不进生产构建）
 apps/web/public            PWA manifest、图标与 service worker（不经构建的静态资源）
+apps/web/worker           队列消费者的进程入口（独立进程：同镜像不同 command，不监听端口）
 packages/core              领域层：纯 TypeScript
 packages/integrations      集成层：一个外部系统一个目录
 packages/db                数据层：schema 与迁移
@@ -45,6 +46,11 @@ Temp/                       临时文件与中间产物（已 gitignore，约定
 `apps/web/e2e` 的理由：端到端用例属于验证资产而不是业务代码，既不能被 `features/` 的模块边界
 绑住，也不能混进 `app/` 路由树；测试配置 `apps/web/playwright.config.ts` 放在包根，与
 `next.config.ts`、`tsconfig.json` 同级。
+
+`apps/web/worker` 的理由：队列消费者是一个**独立进程**，与应用同代码、同镜像，只是启动命令不同
+（`pnpm --filter @xsu/web worker`，见 `docs/ARCHITECTURE.md` 7.3）。它不参与任何请求路径，也不属于
+某个业务模块，因此不进 `app/` 路由树；它与应用同处最上层，对底层的访问同样只经 `@xsu/platform`，
+不直接 import `@xsu/db`。
 
 ## 3. 分层铁律（ESLint 强制，违反即 CI 失败）
 
@@ -149,7 +155,7 @@ Temp/                       临时文件与中间产物（已 gitignore，约定
 ## 7. 验证要求
 
 - **提交级**：`tsc --noEmit`、ESLint、Prettier、Vitest（`packages/core` 分支覆盖 ≥80%）。
-- **PR 级**：Playwright 主流程（桌面 + 移动两套视口）、axe 无 serious 问题、A 级文档同步检查。前两项已实现为 `apps/web/e2e` 下的可重跑用例，命令 `pnpm --filter @xsu/web test:e2e`（要求本地 Postgres 已启动并跑过迁移），CI 的 `e2e` job 跑同一批用例。
+- **PR 级**：Playwright 主流程（桌面 + 移动两套视口）、axe 无 serious 问题、A 级文档同步检查。前两项已实现为 `apps/web/e2e` 下的可重跑用例，命令 `pnpm --filter @xsu/web test:e2e`（要求本地 Postgres 与 Redis 都已启动、迁移已跑过 —— 夹具走真实注册编排，而注册链路依赖队列），CI 的 `e2e` job 跑同一批用例并起同样的两个 service。
 - **周期级**：每周依赖漏洞扫描。
 - **里程碑级**：k6 压测，**真实数字写回 `docs/ARCHITECTURE.md`**。达不到预期就调架构，不调文档。
 
@@ -175,8 +181,8 @@ Temp/                       临时文件与中间产物（已 gitignore，约定
 
 - 本机直连 `github.com:443` 会被重置（`api.github.com` 正常），推送必须显式走本地代理：`git -c http.proxy=socks5h://127.0.0.1:10808 push`。SSH 的 443 端口通，但本机默认 SSH 身份是 `xiaosu-git`，不是本仓库所有者账号，所以本仓库固定走 https + gh 凭证。
 - 本项目外层还有一个无提交、无远端的 git 仓库（`D:\Project`，其下并列多个无关项目）。在它的工作树里执行 `git add` 会把本项目当成嵌套仓库，操作前先确认当前目录。
-- `docker/docker-compose.yml` 的 `postgres` 服务已实际 `up` 并跑过迁移（`xsu-postgres`，healthcheck healthy，宿主端口 5433）；同文件的 `redis` 服务尚未启动过 —— M1 不需要缓存与队列，M2 引入 BullMQ 时再验。
-- 第 5 节的版本号已在 M1 从 npm registry 实查后固化到各 `package.json`，实查结果记在 `docs/CHANGELOG.md`；新增依赖（M2 起：BullMQ、ioredis、TanStack Query / Table、recharts）时需重新核对并记录。
-- `packages/core` 的 ≥80% 分支覆盖率要求尚无工具支撑：`@vitest/coverage-v8` 刻意未安装，等 M2 有真实领域代码再接入。
+- `docker/docker-compose.yml` 的 `postgres` 与 `redis` 两个服务都已实际 `up` 过（`xsu-postgres`、`xsu-redis`，healthcheck 均 healthy，宿主端口 5433 / 6379）。postgres 已跑过迁移；redis 在 M2 引入 BullMQ 时启用，队列与清理任务的手工回归步骤见 `docs/TESTING.md` 第 5 节。
+- 第 5 节的版本号已在 M1 与 M2 从 npm registry 实查后固化到各 `package.json`，实查结果记在 `docs/CHANGELOG.md` 的对应里程碑节（M2 新增：BullMQ 6.3.11、ioredis 6.0.0、`@vitest/coverage-v8` 5.0.2、`tsx` 4.23.15、TanStack Query 5.104.1 / Table 9.2.4）；新增或升级依赖时需重新核对并记录。**recharts 仍未安装**——它的用途是后台看板，属 M5。
+- `packages/core` 的 ≥80% 分支覆盖率要求已有工具支撑：`@vitest/coverage-v8` 在 M2 接入，`pnpm test` 内置 `--coverage` 且门槛写在 `vitest.config.ts`；实测分支覆盖率 **98%**。
 - Markdown（含 A 级文档）不参与 Prettier 检查，见 `.prettierignore`；格式靠人工维持。
 - 第 8 节仅剩机房位置一项待决；OAuth 提供方与账号关联策略已定，并在 M1 按该结论实现（不自动关联账号、绑定须已登录后主动发起），但尚无运行时验证。

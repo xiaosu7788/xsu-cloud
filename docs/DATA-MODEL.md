@@ -42,7 +42,8 @@
 | [`account`](#33-account) | `user_id` | M1 | 已建（迁移 `0000`） |
 | [`verification`](#34-verification) | 无（见 3.4 说明） | M1 | 已建（迁移 `0000`） |
 | [`invites`](#35-invites) | `used_by` / `created_by` | M1 | 已建（迁移 `0000`） |
-| `tool_runs` 等业务表 | — | M2+ | 未建，本文件暂不设计 |
+| [`tool_runs`](#36-tool_runs) | `user_id` | M2 | 已建（迁移 `0001`） |
+| [`tool_favorites`](#37-tool_favorites) | `user_id` | M2 | 已建（迁移 `0001`） |
 
 ---
 
@@ -163,6 +164,53 @@
 
 `code` 的生成与发放方式：脚本手动发放（见 5.3 节）。**不提供公开的邀请码申请入口。**
 
+### 3.6 `tool_runs`
+
+定义：`packages/db/src/schema/tools.ts`。工具箱的运行历史（PRD 3.3），一次执行一行。**失败也落一行**——否则「用户说失败了但我查不到」无法回答。
+
+| 列 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | text | PK | 由应用层生成 |
+| `user_id` | text | not null, FK → `user.id` ON DELETE CASCADE | 归属（红线 6） |
+| `tool_slug` | text | not null，**无外键** | 工具标识，见下第 1 条 |
+| `status` | text | not null, CHECK `in ('succeeded','failed')` | 取值来自 `TOOL_RUN_STATUSES` |
+| `error_code` | text | nullable | 失败时的稳定错误码（`TOOL_FAILURE[*].code`）；成功为 null |
+| `input_bytes` | integer | not null | 输入原文字节数；**敏感输入也存长度**，长度不是内容 |
+| `output_bytes` | integer | nullable | 输出字节数；失败或工具无输出时为 null |
+| `duration_ms` | integer | not null | 领域层计时：从进入 `runTool` 到产出结果 |
+| `input_summary` | text | nullable | 截断后的输入预览；敏感工具为「字段名清单」 |
+| `output_summary` | text | nullable | 截断后的输出预览；敏感工具为 null |
+| `created_at` | timestamptz | not null, default `now()` | 由领域层传入同一时间点，配额窗口与页面展示共用 |
+
+索引与约束：`tool_runs_user_created_idx (user_id, created_at)`；`tool_runs_status_check`。
+
+四条必须一起看的规则：
+
+1. **`tool_slug` 没有外键。** 工具目录不在数据库里：一个工具 = 元数据 + 一个纯函数，在 `packages/core/src/tools/registry.ts` 注册。所以删掉一个工具不会级联清理它的历史与收藏，**写入前必须由领域层校验 slug 在注册表里**（`isRegisteredToolSlug`）。取舍与代价见 [`spec/SPEC-tools.md`](spec/SPEC-tools.md) 第 2 节。
+2. **不存原始输入输出，只存摘要。** 预览由 `buildRunSummary` 统一截断：输入 120 字符、输出 500 字符（`TOOL_RUN_INPUT_PREVIEW_CHARS` / `TOOL_RUN_OUTPUT_PREVIEW_CHARS`）。标记为 `sensitive` 的工具（`base64`、`hash`）连预览都不存——`input_summary` 只留字段名清单，`output_summary` 为 null。运行历史是「回看」用的，不是「重放」用的。这是 PRD 3.3 验收 2「不记录敏感内容」的落点。
+3. **状态取值在两处同时约束。** 领域层用 `TOOL_RUN_STATUSES` 做类型，数据库用 `tool_runs_status_check` 兜底。加状态时两处必须一起改，否则写入会被数据库拒绝——这是有意的，静默写入未知状态更糟。
+4. **归属判定在领域层，管理员也不放行。** `decideToolRunAccess` 只放行业主本人；PRD 3.3 验收 4「只能看到自己的运行历史」由此保证，跨用户访问在领域层拒绝并有测试覆盖（`packages/core/tests/tools.test.ts`）。
+
+保留期：`TOOL_RUN_RETENTION_DAYS_DEFAULT = 30` 天，由 worker 的 `maintenance.cleanup` 任务按天删除（`deleteToolRunsOlderThan`）。
+
+### 3.7 `tool_favorites`
+
+定义：`packages/db/src/schema/tools.ts`。工具收藏（PRD 3.3）。
+
+| 列 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | text | PK | 由应用层生成 |
+| `user_id` | text | not null, FK → `user.id` ON DELETE CASCADE | 归属（红线 6） |
+| `tool_slug` | text | not null，**无外键** | 同 3.6 第 1 条 |
+| `created_at` | timestamptz | not null, default `now()` | — |
+
+索引：`tool_favorites_user_tool_idx (user_id, tool_slug)`，**唯一**。
+
+两条规则：
+
+1. **取消收藏是删行，不是置标志位。** 收藏没有历史语义，留一行 `favorited: false` 只会让「我的收藏」查询多一个过滤条件。
+2. **重复收藏靠唯一索引挡，不靠「先查再插」。** 后者在并发下会留下两行；仓储用 `ON CONFLICT DO NOTHING`（`addToolFavorite`）。
+
 ---
 
 ## 4. 索引
@@ -174,6 +222,8 @@
 | `account_provider_idx` | account | `provider_id, account_id` | OAuth 登录时精确定位绑定关系（不自动关联，见 3.3） |
 | `verification_identifier_idx` | verification | `identifier` | 校验一次性令牌 |
 | `invites_used_by_idx` | invites | `used_by` | 按使用者反查邀请码来源 |
+| `tool_runs_user_created_idx` | tool_runs | `user_id, created_at` | 一个索引服务两件事：运行历史列表（按用户取、时间倒序）与配额窗口计数（`WHERE user_id = ? AND created_at >= ?`），两者都是「先定用户再切时间」 |
+| `tool_favorites_user_tool_idx` | tool_favorites | `user_id, tool_slug`（唯一） | 「我的收藏」列表；同时挡重复收藏（`ON CONFLICT DO NOTHING`），不靠「先查再插」 |
 
 另外由 `unique` 约束隐式建出的唯一索引：`user.email`、`session.token`、`invites.code`。
 
@@ -211,8 +261,9 @@ pnpm --filter @xsu/db db:check
 
 | 脚本 | 用途 | 状态 |
 | --- | --- | --- |
-| `scripts/grant-admin.mjs` | 把指定邮箱提升为 `admin`（首个管理员的唯一来源） | 待建（M1 内） |
-| `scripts/create-invites.mjs` | 手动发放邀请码 | 待建（M1 内） |
+| `scripts/grant-admin.mjs` | 把指定邮箱提升为 `admin`（首个管理员的唯一来源） | **未建 —— M1 计划内但未兑现** |
+| `scripts/create-invites.mjs` | 手动发放邀请码 | **未建 —— M1 计划内但未兑现**（目前发码只能直接改库，或照 `apps/web/e2e/` 的夹具插一行一次性码） |
+| `scripts/enqueue-manual-jobs.ts` | 手工把一条 `mail.send` 与一条 `maintenance.cleanup` 塞进 Redis 队列，配合 `pnpm --filter @xsu/web worker` 做队列与清理任务的手工回归 | 已建（M2） |
 
 脚本直接连库，**不经过应用**，所以每次执行都会被记录在操作者自己的终端历史里；这不是审计日志，审计日志要求见红线 8，细则见 `docs/SECURITY.md`（**尚未创建**）。
 
@@ -222,9 +273,9 @@ pnpm --filter @xsu/db db:check
 
 - **迁移与 schema 一致**：`pnpm --filter @xsu/db db:check` 通过（无 drift）。
 - **迁移可应用**：实跑 `pnpm --filter @xsu/db db:migrate`，随后
-  `docker exec xsu-postgres psql -U xsu -d xsu -c "\dt"` 应列出 `user` / `session` / `account` / `verification` / `invites` 五张表，且 `drizzle.__drizzle_migrations` 有对应记录。**已实跑通过（2026-10-01，5 张表齐）。**
+  `docker exec xsu-postgres psql -U xsu -d xsu -c "\dt"` 应列出 `user` / `session` / `account` / `verification` / `invites`（迁移 `0000`）与 `tool_runs` / `tool_favorites`（迁移 `0001`）共七张表，且 `drizzle.__drizzle_migrations` 有对应记录。**M1 实跑通过（2026-10-01，5 张表齐）；M2 的 `0001_tools_tables.sql` 已在本机实跑生效。**
 - **本文件与代码一致**：逐列对照 `packages/db/src/schema/*.ts` 与 `packages/db/migrations/*.sql`。不一致即缺陷，改本文件。
-- **领域层规则**：邀请码与角色判定有测试覆盖 —— `packages/core/tests/invites.test.ts`（14 例）、`packages/core/tests/access.test.ts`（9 例），`pnpm test` 全通过（**已实跑**）。
+- **领域层规则**：邀请码、角色与工具判定都有测试覆盖 —— `packages/core/tests/` 5 个文件 89 例（invites 14、tools 39、accounts 13、registration 14、access 9）、`packages/platform/tests/` 3 个文件 28 例、分层铁律 12 例，合计 **9 个文件 129 例，`pnpm test` 全通过（已实跑）**。`packages/core` 分支覆盖率 98%（门槛 80%，见 `vitest.config.ts`）。
 - **归属**：新增业务表时逐表检查第 1.1 节，缺 `user_id` 且不属例外即阻断。
 
 ## 已知债务
@@ -232,6 +283,9 @@ pnpm --filter @xsu/db db:check
 - **`role` 是自由文本列，没有数据库级取值约束。** 只有 `default 'user'`，写入非法值（如 `'root'`）数据库不会拒绝。当前靠领域层 fail closed（无法识别的角色按未登录处理），但**脏角色会让人困惑**。可选方案是加 `CHECK (role IN ('user','admin'))`，留到引入第二种角色的需求出现时一并做。
 - **`invites.code` 没有长度与字符集约束。** 生成逻辑在脚本里，靠脚本自律。若将来开放到别处生成，需要加约束。
 - **`user` 表没有 `deleted_at` / 软删除。** PRD 4.4 要求账号注销入口，实现时需决定是硬删还是软删，以及删除后 `invites.used_by` 等外键的处置（当前都是 `SET NULL`，会丢「码被谁用了」的信息）。
-- **`session` 表无过期行清理。** 过期会话不会被自动删除，只会在校验时不通过。量小无所谓，M2 起随 worker 加清理任务。
+- **`session` 表无过期行清理（M2 已解决）。** 原状：过期会话不会被自动删除，只在校验时不通过。M2 起由 worker 的 `maintenance.cleanup` 任务每天 UTC 04:00 删除（`deleteExpiredSessions`，实现见 `packages/platform/src/maintenance.ts`），手工回归步骤见 `docs/TESTING.md` 第 5 节。
 - **审计日志表尚未建。** 红线 8 要求的「只追加不更新」表结构未定，与后台管理（M3）一起设计。
 - **本文件的表结构描述是手工维护的。** 没有从 schema 自动生成表结构的工具链，改 schema 时容易忘记同步本文件——这是本文档最主要的风险。
+- **`tool_runs` 未分区、未归档。** 保留期（缺省 30 天）内的运行历史与收藏都在单表里，量级上来后按时间删除会变慢。M2 的规模下无所谓；等历史量真正成为瓶颈时再谈分区或归档，现在加是过度设计。
+
+- **没有任何受支持的途径创建第一个管理员。** `scripts/grant-admin.mjs` 在 M1 的计划内但没建（见 5.3），M1 的端到端只验了「非管理员被拒」这一侧，从未真的产出一个 `admin` 账号。M3 要落 `(admin)` 后台，开工前必须先补这个入口。这是一条**会阻塞下一个里程碑**的债务，不是可选项。

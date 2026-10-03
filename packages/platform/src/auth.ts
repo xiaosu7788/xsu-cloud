@@ -44,8 +44,14 @@
  *
  * ## 邮件
  *
- * 邮件走 `MailTransport` 端口，不在这里调 SMTP。M1 只有控制台传输（见 `./mail`），
- * 它在生产环境会抛错——「邮件没接上」必须被看见，不能静默成功。
+ * 邮件走 `MailTransport` 端口，不在这里调 SMTP。**M2 起这个端口是入队的**（`./queue` 的
+ * `createQueuedMailTransport`）：验证邮件在注册请求里只排上队，真正发送与重试由
+ * `apps/web/worker` 的 `mail.send` 处理器兜。换到的是注册路径不再被邮件服务卡住，
+ * 代价是「注册成功」不再等于「邮件已发出」——这条变化记在 `CHANGELOG.md` 与
+ * `INTEGRATIONS.md`（`docs/spec/SPEC-tools.md` 第 5 节）。
+ *
+ * 入队**不吞异常**：Redis 不可达时注册请求直接失败。发一个「注册成功、邮件在路上」的
+ * 假象才是更坏的结果（`docs/PRD.md` 3.3 验收 1）。
  *
  * 本文件里凡是写「实测」「核实」的地方，都是对着磁盘上 `better-auth@1.7.7` 的源码与类型
  * 定义确认过的；改这些行为之前请自己再确认一遍。
@@ -59,7 +65,8 @@ import { PASSWORD_MIN_LENGTH } from '@xsu/core';
 import { DEFAULT_ROLE, getDb, schema, type Database } from '@xsu/db';
 
 import { getServerEnv, type OAuthProviderId, type ServerEnv } from './env';
-import { createConsoleMailTransport, type MailTransport } from './mail';
+import type { MailTransport } from './mail';
+import { createQueuedMailTransport } from './queue';
 
 /**
  * 被关掉的鉴权端点，值是相对 basePath（默认 `/api/auth`）的路径。
@@ -243,7 +250,7 @@ let cached: Auth | undefined;
 export function getAuth(): Auth {
   if (!cached) {
     const env = getServerEnv();
-    cached = createAuth({ env, transport: createConsoleMailTransport(env) });
+    cached = createAuth({ env, transport: createQueuedMailTransport(env) });
   }
   return cached;
 }

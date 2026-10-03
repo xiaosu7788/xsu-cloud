@@ -82,6 +82,16 @@
 
 ### M2 — 工具箱
 
+**状态**：五项交付物全部落盘；提交级检查链、生产构建、端到端回归（双视口）与 k6 容量实测均已实跑（2026-10-03）。`pnpm typecheck`、`pnpm lint`、`pnpm format:check` 退出码 0；`pnpm test`（已内置 `--coverage`）**9 个文件 129 个用例全通过**；`pnpm --filter @xsu/web test:e2e`（`next build` + `next start` + 真实库，桌面 1280px / 移动 360px）**56 个用例 50 通过 / 6 跳过 / 0 失败**（跳过项是「改写共享状态的用例只在 desktop 跑一次」这类带理由的显式 `test.skip`）。
+
+**三条退出标准现在都有实测证据**：
+
+- **标准 1（`packages/core` 分支覆盖 ≥80%）**：`@vitest/coverage-v8` 已接入，`packages/core` 合计语句 99.48% / **分支 98%** / 函数 100% / 行 99.45%。没覆盖到的分支是 `registry.ts` 的重复 slug 抛错与 `types.ts` 的一档类型判别 —— 前者只能在模块加载时触发，为它造一个入口不划算。
+- **标准 2（跨用户访问被拒有测试覆盖）**：领域层 `decideToolRunAccess` 只放行归属者（**管理员也不放行**，理由见 [`spec/SPEC-tools.md`](spec/SPEC-tools.md)），用例在 `packages/core/tests/tools.test.ts`；表现层由 `apps/web/e2e/tools.spec.ts` 用第二个真实账号访问他人的运行详情，断言「别人的运行记录打不开，且与不存在的 id 得到同一个视图」，同一文件里还有一条反向断言「自己的运行历史里不出现别人的记录」。
+- **标准 3（第 8 节容量数字不再是 TBD）**：[`ARCHITECTURE.md`](ARCHITECTURE.md) 第 8 节的那段 `TBD` 已被替换成 k6 第二轮的真实数字。该轮按端点分别打点：1m50s、VU 上限 30，3226 iterations / 16130 次请求（146.58 req/s），全站 `p95` 453.34 ms / `p99` 584.67 ms，**全程 0 个 5xx、0 个网络错误**。慢点集中在两条动态控制台页（`p95` 511 / 552 ms），两个静态页的 `p95` 都在 30 ms 以内。同节写明了已知局限：单机、本机压本机、无 CDN、单应用副本、只压读路径、`get-session` 因内建限流只有 800 个成功样本。
+
+这一轮有两个「验证本身抓出来的」结果，都写进了 [`ARCHITECTURE.md`](ARCHITECTURE.md) 7.2 与 [`CHANGELOG.md`](CHANGELOG.md) 的 M2 节：k6 报出的 15.04% 失败率**全部**是 `/api/auth/get-session` 的 429，根因是 Better Auth 按默认配置在**进程内**限流（多副本时每副本各限一份）—— M2 是单副本所以没暴露，不是应用缺陷；注册验证邮件从「请求内同步发」改成「入队后由 worker 发」，代价是**注册成功不再等于邮件已发出**。
+
 **目标**：用最小业务量验证整条工程链。
 
 **交付物**
@@ -205,10 +215,12 @@
 - **M0 的文档体系里 `docs/ADR/` 尚未建立。** 目前的关键决策记录散落在本文件与 [`ARCHITECTURE.md`](ARCHITECTURE.md)，需要在 M0 抽出独立 ADR。
 - **本文件的时间估计一律缺失，这是有意的。** 没有可比较的历史速度之前写下的人日数字是编的，不写比写错的强。
 - **M7 的备份演练依赖 `docs/DEPLOYMENT.md`，该文件尚未创建。**
-- **容量目标未定死。** 目标用户规模与开放程度相关，等 M2 有真实数字后再回填。
+- **容量目标尚未定死。** M2 已经给出第一组真实数字（[`ARCHITECTURE.md`](ARCHITECTURE.md) 第 8 节），但那只覆盖读路径与单应用副本，而且是本机压本机。目标用户规模与开放程度相关，等 M3 有并发写入路径的数字后一并回填。
 
 - **M1 的三条退出标准已有可重跑的回归，但覆盖止于「不需要外部交互的那一半」。** 静态化、双视口导航与无横向滚动、统一拒绝响应都由 `apps/web/e2e/` 的用例守住，改坏了 CI 会红（`e2e` job）。它挡不住四件事：邮箱验证链接的完整往返（夹具直接把 `emailVerified` 置真，理由见 `apps/web/e2e/seed.ts`）、OAuth 回调、真实 SMTP 投递，以及 service worker 的注册/离线/更新提示交互（端到端里被刻意屏蔽，见 [`playwright.config.ts`](../apps/web/playwright.config.ts)）。手工实测的原始证据仍留在上面 M1「状态」里。
 
 - **M1 的邮件只走过「控制台传输」，没接过真实 SMTP。** 本机 `.env` 已写入开发值（`.env` 由 `.gitignore` 排除，字段清单是入库的 `.env.example`），迁移已应用到本地 `xsu-postgres`；注册触发的验证邮件只是把链接打到终端，再由脚本去点。真实 SMTP 投递（含退信、限流、生产密钥轮换）未验证。
 
 - **M1 的 PWA 与 OAuth 都只验证到「不涉及外部交互的那一半」。** PWA：生产构建 + `next start` 下 `/manifest.webmanifest`（`application/manifest+json`，917 B）、`/sw.js`（`application/javascript`，8456 B）、`/offline.html`（3320 B）与 5 个图标（192 / 512 / maskable 192 / maskable 512 / apple-touch-icon，均 `image/png`）全部返回 200，字节数是按 `Accept-Encoding: identity` 请求后读到的 `Content-Length`；但 **service worker 的注册、离线提示与「有新版本」提示的交互没有在浏览器里跑过**——端到端用例里它是被刻意屏蔽的（`serviceWorkers: 'block'`），理由见 [`playwright.config.ts`](../apps/web/playwright.config.ts)。OAuth：本机没有 GitHub / Linux.do 的提供方凭证（`packages/platform` 对没配凭证的提供方整个去掉该键），真实回调与账号绑定流程未跑过。
+
+- **创建第一个管理员的途径不存在。** M1 计划里的 `scripts/grant-admin.mjs` 没建，目前把账号提升为 `admin` 只能直接改库；M1 的端到端只验了「非管理员被拒」这一侧，从未真的产出一个 `admin` 账号。事实与后果见 [`DATA-MODEL.md`](DATA-MODEL.md) 第 5.3 节与它的「已知债务」。M3 要落 `(admin)` 后台，开工前必须先补这个入口。
