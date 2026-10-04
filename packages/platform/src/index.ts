@@ -10,7 +10,12 @@
  * - `./maintenance`：定期清理（过期会话、超保留期的运行历史），由队列的重复任务调用
  * - `./tools`：工具箱的端口装配（执行端口 + 历史与收藏读写）
  *
- * 尚未落位：cache（M5 走 Redis 承载高频计数时再落）。
+ * - `./cache`：Redis 缓存（M3 首次落地）。目前只有社区的点赞计数，best-effort：缓存故障
+ *   不影响结果，数据库是事实来源
+ * - `./community`：社区的端口装配（领域端口 + 点赞计数/点赞标记/作者摘要三个页面读取）
+ * 领域端口（`CommunityPorts`）由 `./community` 装配；`./cache` 是它依赖的计数缓存。
+ * - `./admin`：后台管理（M5）的端口装配。无页面读取、无环境依赖，纯粹把 `AdminPorts`
+ *   接到数据库仓储上；审计同事务与防自锁的兜底都在仓储与领域层。
  *
  * 这里只放基础设施，不放业务规则；鉴权「谁能做什么」的判定属于领域层
  * （`packages/core/src/access.ts`）。
@@ -22,3 +27,7 @@ export * from './maintenance';
 export * from './queue';
 export * from './registration';
 export * from './tools';
+export * from './cache';
+export * from './community';
+export * from './admin';
+export * from './quota';

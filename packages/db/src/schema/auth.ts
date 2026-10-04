@@ -19,6 +19,8 @@ export const ROLES = ['user', 'admin'] as const;
  * 不在别处写 `'user'` 字面量：代码里判一种角色、数据库默认值是另一种，只会在生产露出来。
  */
 export const DEFAULT_ROLE = 'user' satisfies (typeof ROLES)[number];
+/** 与 core/access.ts 的 ADMIN_ROLE 结构兼容的本地副本（db 包不得 import core）。 */
+export const ADMIN_ROLE = 'admin' satisfies (typeof ROLES)[number];
 
 export const user = pgTable('user', {
   id: text('id').primaryKey(),
@@ -28,6 +30,14 @@ export const user = pgTable('user', {
   image: text('image'),
   /** 角色。默认 user；提升为 admin 只能由管理员在后台操作，且要写审计日志（红线 8）。 */
   role: text('role').notNull().default(DEFAULT_ROLE),
+  /**
+   * 封禁（M5，自研）。非空即被封禁：登录被 `databaseHooks.session.create.before`
+   * 现查此列阻断，封禁事务内同时删除该用户全部 session 行。封禁时间与操作者
+   * 以审计行为准，不在这里冗余。
+   */
+  bannedAt: timestamp('banned_at', { withTimezone: true }),
+  /** 封禁理由；随封禁写入、随解封清除，长度上限在领域层（`BAN_REASON_MAX`）。 */
+  banReason: text('ban_reason'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

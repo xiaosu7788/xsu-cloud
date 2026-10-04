@@ -19,10 +19,13 @@
  */
 import { existsSync } from 'node:fs';
 import { join, parse, resolve } from 'node:path';
-
+import {
+  COMMENT_QUOTA_PER_HOUR_DEFAULT,
+  POST_QUOTA_PER_HOUR_DEFAULT,
+  TOOL_QUOTA_PER_HOUR_DEFAULT,
+  TOOL_RUN_RETENTION_DAYS_DEFAULT,
+} from '@xsu/core';
 import { z } from 'zod';
-
-import { TOOL_QUOTA_PER_HOUR_DEFAULT, TOOL_RUN_RETENTION_DAYS_DEFAULT } from '@xsu/core';
 
 /** OAuth 提供方 id。与 Better Auth 的 `providerId` 一致，前端按钮也按它索引。 */
 export type OAuthProviderId = 'github' | 'linuxdo';
@@ -75,6 +78,13 @@ export type ServerEnv = {
     quotaPerHour: number;
     /** 运行历史的保留天数，`maintenance.cleanup` 按它删旧记录。 */
     retentionDays: number;
+  };
+  /** 社区的运行时配置。两项都能用环境变量覆盖，缺省值来自领域层常量。 */
+  community: {
+    /** 单用户每小时的发帖上限。**0 表示关闭发帖**，不是「不限」。 */
+    postQuotaPerHour: number;
+    /** 单用户每小时的评论上限。为 0 表示关闭评论。 */
+    commentQuotaPerHour: number;
   };
 };
 
@@ -135,6 +145,10 @@ const envSchema = z.object({
   TOOL_RUN_QUOTA_PER_HOUR: optionalCount,
   /** 运行历史保留天数。留空用领域层默认值。 */
   TOOL_RUN_RETENTION_DAYS: optionalCount,
+  /** 单用户每小时的发帖上限。留空用领域层默认值；显式写 0 表示关闭发帖，不是「不限」。 */
+  POST_QUOTA_PER_HOUR: optionalCount,
+  /** 单用户每小时的评论上限。语义同上。 */
+  COMMENT_QUOTA_PER_HOUR: optionalCount,
 });
 
 /** 必须成对出现的凭证。只填一半的配置会在第一次登录时才炸，所以在这里拦下。 */
@@ -241,6 +255,14 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
     tools: {
       quotaPerHour: value.TOOL_RUN_QUOTA_PER_HOUR ?? TOOL_QUOTA_PER_HOUR_DEFAULT,
       retentionDays: value.TOOL_RUN_RETENTION_DAYS ?? TOOL_RUN_RETENTION_DAYS_DEFAULT,
+    },
+    /*
+     * 与 `tools` 同一条理由：缺省值来自领域层常量（`POST_QUOTA_PER_HOUR_DEFAULT` 等），
+     * 配额规则的说法不能有第二个事实来源。
+     */
+    community: {
+      postQuotaPerHour: value.POST_QUOTA_PER_HOUR ?? POST_QUOTA_PER_HOUR_DEFAULT,
+      commentQuotaPerHour: value.COMMENT_QUOTA_PER_HOUR ?? COMMENT_QUOTA_PER_HOUR_DEFAULT,
     },
   };
 }

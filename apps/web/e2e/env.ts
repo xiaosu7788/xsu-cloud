@@ -125,6 +125,13 @@ export const NON_ADMIN = {
   password: 'e2e-non-admin-password',
 } as const;
 
+/** 端到端专用账号：管理员。社区举报 e2e 用它走真实审核路径。 */
+export const ADMIN = {
+  name: 'e2e 管理员',
+  email: 'e2e-admin@example.com',
+  password: 'e2e-admin-password',
+} as const;
+
 /**
  * 端到端专用账号：他人。
  *
@@ -153,6 +160,9 @@ export const PLAYWRIGHT_ARTIFACTS = join(REPO_ROOT, 'Temp', 'out', 'playwright')
 
 /** 登录后的会话状态落盘位置。由 `e2e/auth.setup.ts` 写入，由需要的用例读入。 */
 export const NON_ADMIN_STORAGE = join(PLAYWRIGHT_ARTIFACTS, 'auth', 'non-admin.json');
+
+/** 管理员登录后的会话状态，由 `apps/web/e2e/admin.setup.ts` 写入。 */
+export const ADMIN_STORAGE = join(PLAYWRIGHT_ARTIFACTS, 'auth', 'admin.json');
 
 /**
  * 他人运行记录坐标的落盘位置。

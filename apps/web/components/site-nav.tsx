@@ -6,17 +6,15 @@
  * 与 `components/responsive-nav.tsx` 的分工：那个是**登录后**的工作区骨架（桌面侧边栏 +
  * 移动底部 Tab），这个是**未登录也能看**的公开页顶栏。
  *
- * ## 为什么公开页没有第二套壳
+ * ## 移动端第二套壳（M3 落地）
  *
- * `docs/PRD.md` 4.1 要求「导航在移动端与桌面端各一套壳」，`docs/ROADMAP.md` M1 把它落实为
- * `ResponsiveNav` 的两套壳。这里刻意不照搬底部 Tab，原因是公开页的入口到现在也只有首页：底部
- * Tab 在只有一个格子时会渲染成一条空条——它占掉手机最宝贵的一条带，却不提供任何去处。
- * 两套壳的前提是「有足够多的入口值得占那条带」。
+ * `docs/PRD.md` 4.1 要求「导航在移动端与桌面端各一套壳」。M1 时公开页只有首页，底部 Tab
+ * 会渲染成一条空条，因此当时刻意只有顶栏；社区（M3）落地后公开入口达到三个（首页 / 社区 /
+ * 工具箱），按当初写下的条件补上移动底部 Tab。写法照搬 `ResponsiveNav` 的移动壳：`h-14` +
+ * `pb-[env(safe-area-inset-bottom)]`，当前态复用 `isActive` 与同一组样式变量。
  *
- * 注意 `(site)` 下已经有第二个页面（`/tools`，M2 的工具箱清单），但它的入口放在首页正文里，
- * 没有进顶栏——顶栏链接是「目的地」级别的入口，加它就等于公开入口达到两个。
- * **重新评估的时机**：社区落地、公开入口达到两个以上时，按 `ResponsiveNav` 的写法补底部
- * Tab；到那时 `ITEM_*` 的当前态样式与 `isActive` 都直接复用，不需要新逻辑。
+ * **联动约束**：`components/service-worker-registrar.tsx` 的更新提示条按 `mb-14` 避让底部
+ * 导航，改这里的高度必须同时改那边。
  *
  * ## 当前态判定复用 `isActive`
  *
@@ -43,11 +41,15 @@ const BRAND = 'xsu-cloud';
 const LINK_ACTIVE = 'bg-muted font-medium text-foreground';
 const LINK_IDLE = 'text-muted-foreground hover:bg-muted hover:text-foreground';
 
+/** 移动 Tab 的当前态样式：竖排（图标在上、文字在下），照搬 `ResponsiveNav` 的移动壳。 */
+const TAB_ACTIVE = 'bg-muted font-medium text-foreground';
+const TAB_IDLE = 'text-muted-foreground hover:bg-muted hover:text-foreground';
+
 export type SiteNavProps = {
   items: readonly NavItem[];
   /** 右侧操作区，通常是主题切换与登录态入口。 */
   actions?: ReactNode;
-  /** 导航区的可访问名称。 */
+  /** 两套壳（顶栏 + 底部 Tab）共用的可访问名称。 */
   label: string;
   className?: string;
 };
@@ -56,64 +58,104 @@ export function SiteNav({ items, actions, label, className }: SiteNavProps) {
   const pathname = usePathname();
 
   return (
-    <header
-      className={cn(
-        'sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur',
-        'pt-[env(safe-area-inset-top)]',
-        className,
-      )}
-    >
-      {/*
-       * `max-w-5xl` + `px-4`：内容宽与 `(site)` 布局的 `<main>` 对齐，否则顶栏的链接与
-       * 正文会左右错开几像素。
-       * `gap-2` 而不是 `gap-4`：360px 下品牌 + 两个操作项已经很挤，间距从这里省。
-       */}
-      <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-4">
+    <>
+      <header
+        className={cn(
+          'sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur',
+          'pt-[env(safe-area-inset-top)]',
+          className,
+        )}
+      >
         {/*
-         * `h-11` 而不是让文字自己撑高：文字本身只有 20px 高，命中区比 `docs/PRD.md` 4.1
-         * 要求的 44px 少了一半以上，360px 实测命中区只有 66x20。顶栏行高是 `h-14`，
-         * 装得下 44px 的命中区，不改变视觉位置。
+         * `max-w-5xl` + `px-4`：内容宽与 `(site)` 布局的 `<main>` 对齐，否则顶栏的链接与
+         * 正文会左右错开几像素。
+         * `gap-2` 而不是 `gap-4`：360px 下品牌 + 两个操作项已经很挤，间距从这里省。
          */}
-        <Link
-          href="/"
-          className="inline-flex h-11 shrink-0 items-center text-sm font-semibold tracking-tight"
-        >
-          {BRAND}
-        </Link>
+        <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-4">
+          {/*
+           * `h-11` 而不是让文字自己撑高：文字本身只有 20px 高，命中区比 `docs/PRD.md` 4.1
+           * 要求的 44px 少了一半以上，360px 实测命中区只有 66x20。顶栏行高是 `h-14`，
+           * 装得下 44px 的命中区，不改变视觉位置。
+           */}
+          <Link
+            href="/"
+            className="inline-flex h-11 shrink-0 items-center text-sm font-semibold tracking-tight"
+          >
+            {BRAND}
+          </Link>
 
-        {items.length > 0 ? (
-          /*
-           * `min-w-0`：让这一块可以被压缩；没有它，`flex-1` 的最小宽度按内容算，
-           * 链接一多就会把操作区顶出屏幕（360px 下表现为横向滚动）。
-           */
-          <nav aria-label={label} className="hidden min-w-0 flex-1 md:block">
-            <ul className="flex items-center gap-1">
-              {items.map((item) => {
-                const active = isActive(pathname, item);
-                return (
-                  <li key={item.href} className="min-w-0">
-                    <Link
-                      href={item.href}
-                      /* 高亮底色对屏幕阅读器无效，当前页要单独标出来。 */
-                      aria-current={active ? 'page' : undefined}
-                      className={cn(
-                        'flex h-11 items-center gap-2 rounded-md px-3 text-sm transition-colors',
-                        active ? LINK_ACTIVE : LINK_IDLE,
-                      )}
-                    >
-                      {item.icon}
-                      <span className="truncate">{item.label}</span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
-        ) : null}
+          {items.length > 0 ? (
+            /*
+             * `min-w-0`：让这一块可以被压缩；没有它，`flex-1` 的最小宽度按内容算，
+             * 链接一多就会把操作区顶出屏幕（360px 下表现为横向滚动）。
+             */
+            <nav aria-label={label} className="hidden min-w-0 flex-1 md:block">
+              <ul className="flex items-center gap-1">
+                {items.map((item) => {
+                  const active = isActive(pathname, item);
+                  return (
+                    <li key={item.href} className="min-w-0">
+                      <Link
+                        href={item.href}
+                        /* 高亮底色对屏幕阅读器无效，当前页要单独标出来。 */
+                        aria-current={active ? 'page' : undefined}
+                        className={cn(
+                          'flex h-11 items-center gap-2 rounded-md px-3 text-sm transition-colors',
+                          active ? LINK_ACTIVE : LINK_IDLE,
+                        )}
+                      >
+                        {item.icon}
+                        <span className="truncate">{item.label}</span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </nav>
+          ) : null}
 
-        {/* `ml-auto` 让操作区无论导航在不在都贴右；`shrink-0` 保证按钮不被压变形。 */}
-        {actions ? <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div> : null}
-      </div>
-    </header>
+          {/* `ml-auto` 让操作区无论导航在不在都贴右；`shrink-0` 保证按钮不被压变形。 */}
+          {actions ? (
+            <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>
+          ) : null}
+        </div>
+      </header>
+
+      {/*
+       * 移动底部 Tab：`fixed` + `(site)` 布局 `<main>` 上等高的 `pb-*`（3.5rem + safe-area）
+       * 共同保证最后一行内容不被 Tab 栏压住，写法与 `ResponsiveNav` 的移动壳一致。
+       * `md:hidden`：桌面端顶栏已有横排导航，Tab 只在窄屏出现。公开站项目前 3 项
+       * （≤ `MOBILE_TAB_MAX`），按 `flex-1` 平分宽度即可，不需要横向滚动分支。
+       */}
+      <nav
+        aria-label={label}
+        className={cn(
+          'fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 backdrop-blur',
+          'pb-[env(safe-area-inset-bottom)] md:hidden',
+        )}
+      >
+        <ul className="flex h-14 items-stretch">
+          {items.map((item) => {
+            const active = isActive(pathname, item);
+            return (
+              <li key={item.href} className="min-w-0 flex-1">
+                <Link
+                  href={item.href}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'flex h-full flex-col items-center justify-center gap-1 px-3 text-[0.6875rem]',
+                    'transition-colors',
+                    active ? TAB_ACTIVE : TAB_IDLE,
+                  )}
+                >
+                  {item.icon}
+                  <span className="w-full truncate text-center">{item.label}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+    </>
   );
 }

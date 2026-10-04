@@ -134,7 +134,7 @@
 | 域 | 核心表 | 关键设计点 |
 | --- | --- | --- |
 | `accounts` | `user`、`session`、`account`、`verification`、`invites`（M4 再加 `external_identities`） | **不在 `user` 上硬写某一个外部系统的 ID**：登录用的第三方身份挂在 `account`，以 `(provider_id, account_id)` 标识（表名与字段见 [`DATA-MODEL.md`](DATA-MODEL.md)）；外部系统的用户级映射留到 M4 的 `external_identities`。任何外部系统都能挂，换源不返工 |
-| `community` | `posts`、`comments`、`reactions`、`tags`、`reports` | `reactions` 靠唯一约束防重复点赞；列表走游标分页 + 复合索引 |
+| `community` | `posts`、`comments`、`reactions`、`reports`（M3 已建） | 标签用 `posts.tags text[]` + GIN 索引，**不建 `tags` 表**——M3 需要的只有打标签与按标签浏览，改名 / 合并需求出现时再建表回填（见 [`spec/SPEC-community.md`](spec/SPEC-community.md) 第 2 节）；`reactions` 复合主键就是并发点赞的防线；列表走 `(created_at, id)` 游标分页 + 复合索引 |
 | `tools` | `tool_runs`、`tool_favorites` | **没有 `tools` 表**：工具目录在代码里（`packages/core/src/tools/registry.ts`），所以 `tool_slug` 无外键、删工具不清理历史。`tool_runs` 存输入输出摘要与耗时用于配额与审计，**不存敏感内容**——标记 `sensitive` 的工具连预览都不存 |
 | `genimage` | `image_jobs`、`image_assets`、`image_presets` | `image_jobs` 存外部任务 ID 与状态机；`image_assets` 只存对象存储 key 与元数据，**不存二进制** |
 | `ops` | `audit_logs`、`api_usage`、`settings` | `audit_logs` 只追加不更新；`settings` 集中放可调开关 |
@@ -198,11 +198,11 @@
 
 ### 7.2 缓存
 
-| 缓存对象 | 位置 | 失效策略 | 现状（2026-10-03） |
+| 缓存对象 | 位置 | 失效策略 | 现状（2026-10-04） |
 | --- | --- | --- | --- |
-| 公开页面 | CDN / ISR | 按标签或时间重新验证 | 预渲染已生效（k6 实测 `/` 与 `/tools` 走的是预渲染产物），**CDN 未接** |
-| 列表与计数 | Redis | 短 TTL + 写时失效；计数可容忍短暂不一致 | **未实现**：M2 没有任何列表或计数走缓存 |
-| 会话与限流计数 | Redis | 随会话 / 时间窗过期 | **未接 Redis**：Better Auth 按默认配置在**进程内**限流（k6 实测 429 确实生效），多副本时每副本各限一份 —— M2 是单副本，所以这个缺口没暴露 |
+| 公开页面 | CDN / ISR | 按标签或时间重新验证 | 预渲染已生效（k6 实测 `/` 与 `/tools` 走的是预渲染产物；M3 起 `/community` 系列也是 ISR，见 `prerender-manifest.json` 的 `dynamicRoutes`），**CDN 未接** |
+| 列表与计数 | Redis | 短 TTL + 写时失效；计数可容忍短暂不一致 | **点赞计数已实现（M3）**：`packages/platform/src/cache.ts`，键 `community:post:{id}:likes`、TTL 60 秒、写时直改、缺失回库重建（手工回归 `scripts/verify-reaction-cache.ts`）；**列表缓存仍未做** |
+| 会话与限流计数 | Redis | 随会话 / 时间窗过期 | **限流未接 Redis**：Better Auth 按默认配置在**进程内**限流（k6 实测 429 确实生效），多副本时每副本各限一份 —— M2/M3 是单副本，所以这个缺口没暴露 |
 
 ### 7.3 队列
 
@@ -285,8 +285,8 @@
 ## 已知债务
 
 - **第 8 节的数字只覆盖读路径与单副本。** 真实网络、CDN、多副本、并发写、被限流挡住的 `get-session` 都没有数字；内存峰值 886 MB 且压测结束后不回落的现象也**尚无根因**。缺什么、怎么补，见第 8 节末尾与 [`TESTING.md`](TESTING.md) 第 6 节。
-- 第 5 节的分域与关键设计点已落到 [`DATA-MODEL.md`](DATA-MODEL.md)（M1：鉴权四表 + 邀请码表；M2：`tool_runs` + `tool_favorites`）；**M3 起的三个域（`community` / `genimage` / `ops`）尚未设计**。
-- 第 7 节里**只有队列（7.3）真正实现了**。对象存储（7.1）与缓存（7.2）仍是方向性描述：缓存部分连 Redis 都没接上。7.2 的表格新增「现状」一列，就是为了不再出现「写了等于做了」的误读。
+- 第 5 节的分域与关键设计点已落到 [`DATA-MODEL.md`](DATA-MODEL.md)（M1：鉴权四表 + 邀请码表；M2：`tool_runs` + `tool_favorites`；M3：`community` 五张表 + `audit_logs`，见其 3.8–3.12 节）；**`genimage` / `ops` 域中除 `audit_logs` 外的表尚未设计**。
+- 第 7 节已落地的只有队列（7.3）与缓存中的点赞计数（7.2，M3）；对象存储（7.1）与列表缓存仍是方向性描述。7.2 的表格「现状」一列就是为了不再出现「写了等于做了」的误读。
 - 第 7.4 节的原语：「`ResponsiveNav` + 断点常量」已被 M1 的移动视口端到端用例覆盖（导航形态切换、360px 无横向滚动、触控目标），`ResponsiveTable` 已被 M2 的运行历史页真实使用且两种形态都有用例（`apps/web/e2e/tools.spec.ts`）；**`ResponsiveGallery` 仍然零使用**——它要等到 M6 的生图工作台才有真实用法，现在只有类型与实现。
 - 生图全链路（6.2）中「外部签名链接的实际有效期」来自对外部系统的调研，**未在本项目实际源上验证**，见 [`PRD.md`](PRD.md) 已知债务。
 - 备份与恢复的具体方案（频率、保留期、异地存储、演练步骤）属 `docs/DEPLOYMENT.md` 范围，尚未建立；在单机部署下这是最高风险项。

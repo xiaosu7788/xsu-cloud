@@ -1,33 +1,64 @@
 /**
- * 后台概览。
+ * 后台概览（`/admin`）：五个计数卡 + 到各子页的入口。
  *
- * 这一页自己守一次的理由与 `(console)/console/settings/page.tsx` 相同：布局守的是直接访问，
- * 分区内部跳转时布局段可能被路由缓存复用。本页要用当前登录者，所以自己读一次判定。
+ * 这一页自己守一次的理由与举报页相同：布局守的是直接访问，分区内部跳转时布局段可能被
+ * 路由缓存复用。本页要用当前登录者，所以自己读一次判定。
  *
- * 内容是**权限门禁本身**：M1 的后台只有一道门，没有任何管理功能，因此这一页的作用是让
- * 「谁能进来、进来之后看到的和用户控制台有什么不同」成为一个可以直接看的事实。
- * 真正的管理模块排在 M5。
+ * 计数来自 `getAdminOverview`（领域层只读入口，第一步就是管理员判定）：
+ * 用户、帖子（可见口径）、评论、待处理举报、工具运行。不做任何耗时统计。
  */
 import type { Metadata } from 'next';
+import Link from 'next/link';
+
+import { getAdminOverview } from '@xsu/core';
+import { createAdminGateway } from '@xsu/platform';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-
+import {
+  ADMIN_AUDIT,
+  ADMIN_CONFIG,
+  ADMIN_CONTENT,
+  ADMIN_TASKS,
+  ADMIN_USERS,
+} from '@/features/admin/routes';
 import { AccessDenied } from '@/features/auth/access-denied';
 import { redirectToSignInIfUnauthenticated } from '@/features/auth/guard';
 import { readAdminAccess } from '@/features/auth/session';
+import { ADMIN_REPORTS } from '@/features/community/routes';
 
 export const metadata: Metadata = {
   title: '后台管理',
 };
 
-/** 排期中的后台模块，全部在 M5。 */
-const PENDING_MODULES = [
-  { name: '用户管理', scope: '账号、角色、封禁' },
-  { name: '内容管理', scope: '帖子、评论、举报处理' },
-  { name: '任务管理', scope: '生图任务与失败重试' },
-  { name: '站点配置', scope: '配额、限流、开关' },
-  { name: '审计日志', scope: '敏感操作留痕，只追加不更新' },
-];
+/** 概览卡：计数 + 到子页的入口。 */
+function OverviewCard({
+  label,
+  value,
+  description,
+  href,
+  linkLabel,
+}: {
+  label: string;
+  value: number;
+  description: string;
+  href: string;
+  linkLabel: string;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{label}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex items-end justify-between gap-2">
+        <p className="text-3xl font-semibold tracking-tight">{value}</p>
+        <Link href={href} className="text-sm underline underline-offset-2">
+          {linkLabel}
+        </Link>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default async function AdminHomePage() {
   const access = await readAdminAccess();
@@ -37,48 +68,104 @@ export default async function AdminHomePage() {
     return <AccessDenied denial={access.denial} />;
   }
 
+  const gateway = createAdminGateway();
+  const overview = await getAdminOverview(gateway, { actorRole: access.role });
+
+  if (!overview.ok) {
+    return (
+      <div className="flex flex-col gap-6">
+        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">后台管理</h1>
+        <p className="text-sm text-destructive">{overview.failure.message}</p>
+      </div>
+    );
+  }
+
+  const cards: Array<{
+    label: string;
+    value: number;
+    description: string;
+    href: string;
+    linkLabel: string;
+  }> = [
+    {
+      label: '用户',
+      value: overview.value.userCount,
+      description: '全部注册账号，含被封禁用户。',
+      href: ADMIN_USERS,
+      linkLabel: '用户管理',
+    },
+    {
+      label: '帖子',
+      value: overview.value.postCount,
+      description: '公开可见口径（不含下架与已删除）。',
+      href: ADMIN_CONTENT,
+      linkLabel: '内容管理',
+    },
+    {
+      label: '评论',
+      value: overview.value.commentCount,
+      description: '全部评论，含下架。',
+      href: ADMIN_CONTENT,
+      linkLabel: '内容管理',
+    },
+    {
+      label: '待处理举报',
+      value: overview.value.openReportCount,
+      description: 'status = open 的举报。',
+      href: ADMIN_REPORTS,
+      linkLabel: '举报处理',
+    },
+    {
+      label: '工具运行',
+      value: overview.value.toolRunCount,
+      description: '全部工具运行记录，含失败。',
+      href: ADMIN_TASKS,
+      linkLabel: '任务管理',
+    },
+  ];
+
   return (
     <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-2">
         <h1 className="text-xl font-semibold tracking-tight md:text-2xl">后台管理</h1>
-        {/* 能渲染到这一行本身就说明角色判定放行了：本页只有 `admin` 角色可见。 */}
         <p className="text-sm text-muted-foreground">当前登录：{access.user.name}（管理员）</p>
       </section>
 
+      {/* 移动端单列，宽屏两到三列（`docs/PRD.md` 4.1：360px 无横向滚动）。 */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {cards.map((card) => (
+          <OverviewCard
+            key={card.label}
+            label={card.label}
+            value={card.value}
+            description={card.description}
+            href={card.href}
+            linkLabel={card.linkLabel}
+          />
+        ))}
+      </div>
+
       <Card>
         <CardHeader>
-          <CardTitle>权限门禁</CardTitle>
-          <CardDescription>M1 的后台只有这道门，还没有任何管理功能。</CardDescription>
+          <CardTitle>站点配置</CardTitle>
+          <CardDescription>每小时配额的覆盖入口。</CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
-          <p>
-            未登录或会话失效时访问后台会被重定向到登录页；已登录但不是管理员时得到同一张拒绝页
-            （正文里印着 <span className="font-mono text-xs">403 FORBIDDEN</span>），不会时而 404
-            时而 500。
-          </p>
-          <p>
-            响应状态码是 200 而不是 403：Next 返回真 403 需要的实验特性本项目没有开启，理由写在
-            <span className="font-mono text-xs"> features/auth/guard.ts </span>
-            的文件头。判断「是否被拒」要看响应体，不能只看状态码。
-          </p>
+        <CardContent>
+          <Link href={ADMIN_CONFIG} className="text-sm underline underline-offset-2">
+            管理站点配置
+          </Link>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>尚未开放的模块</CardTitle>
-          <CardDescription>全部排在 M5。导航里不会出现它们的入口。</CardDescription>
+          <CardTitle>审计日志</CardTitle>
+          <CardDescription>敏感操作留痕，只追加不更新（无 UPDATE / DELETE 路径）。</CardDescription>
         </CardHeader>
         <CardContent>
-          {/* 移动端单列，宽屏两列（`docs/PRD.md` 4.1：360px 无横向滚动）。 */}
-          <ul className="grid gap-3 sm:grid-cols-2">
-            {PENDING_MODULES.map((module) => (
-              <li key={module.name} className="rounded-md border border-border px-3 py-2">
-                <p className="text-sm font-medium">{module.name}</p>
-                <p className="text-xs text-muted-foreground">{module.scope}</p>
-              </li>
-            ))}
-          </ul>
+          <Link href={ADMIN_AUDIT} className="text-sm underline underline-offset-2">
+            查看审计日志
+          </Link>
         </CardContent>
       </Card>
     </div>

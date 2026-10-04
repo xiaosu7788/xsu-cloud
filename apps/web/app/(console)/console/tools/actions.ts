@@ -78,7 +78,7 @@ export async function runToolAction(
     input[field.name] = readToolFieldValue(formData, field.name);
   }
 
-  const outcome = await runTool(createToolPorts({ userId }), { userId, slug, input });
+  const outcome = await runTool(await createToolPorts({ userId }), { userId, slug, input });
 
   /*
    * 运行历史刚刚多了一行，`/console/tools/runs` 已经过期。这几页在 Next 16 下是动态渲染
@@ -135,7 +135,7 @@ export async function toggleFavoriteAction(formData: FormData): Promise<void> {
    */
   if (!intent || !isRegisteredToolSlug(slug)) return;
 
-  const ports = createToolPorts({ userId: access.user.id });
+  const ports = await createToolPorts({ userId: access.user.id });
   if (intent === 'add') {
     await ports.addFavorite(slug);
   } else {

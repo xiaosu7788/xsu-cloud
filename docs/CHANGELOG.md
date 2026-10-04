@@ -5,6 +5,65 @@
 事实归属：范围与验收看 [`PRD.md`](PRD.md)，里程碑划分与退出标准看 [`ROADMAP.md`](ROADMAP.md)，分层与边界看 [`ARCHITECTURE.md`](ARCHITECTURE.md)，表结构看 [`DATA-MODEL.md`](DATA-MODEL.md)，外部系统契约看 [`INTEGRATIONS.md`](INTEGRATIONS.md)。本文件只记「什么时候改了什么」，不重复以上内容。
 
 ---
+ 
+ ---
+ 
+ ## M5 — 后台管理（2026-10-05）
+ 
+ **状态**：六项交付物全部落盘；提交级检查链、生产构建与端到端回归（双视口）均已实跑。四条退出标准的证据见 [`ROADMAP.md`](ROADMAP.md) M5「状态」，领域规则与防自锁见 [`spec/SPEC-admin.md`](spec/SPEC-admin.md)，表结构见 [`DATA-MODEL.md`](DATA-MODEL.md) 3.13 与 3.12。
+ 
+ ### 新增
+ 
+ - **数据层** `packages/db`：`site_config` 单行表（CHECK `id = 1`、三项每小时配额 nullable、`updated_by` SET NULL，`schema/admin.ts`）与迁移 `0003_admin_tables.sql`——`user` 加 `banned_at` / `ban_reason`，`audit_logs.target_type` 的 CHECK 扩为 `('post','comment','user','site_config')`（DROP + ADD 为 drizzle 生成后手工核对）；仓储 `repositories/admin.ts`（条件 UPDATE 回读区分失败码、业务变更与审计同事务、单行 upsert）。
+ - **领域层** `packages/core/src/admin/`：`users`（改角色 / 封禁 / 解封，`selfRoleChange` / `selfBan` / `lastAdmin` 防自锁，幂等返回 `changed:false` 不写审计）、`content`（帖子与评论下架 / 恢复，恢复评论要求父帖存活）、`config`（配额覆盖校验 0..1000000 + upsert 同事务审计）、`overview` / `tasks`（只读统计）、`rules` / `types`（`ADMIN_FAILURE` 失败码表与 `AUDIT_ACTION` 扩展）。
+ - **平台层** `packages/platform`：`quota.ts`（`resolveQuotaOverrides`：`site_config` 覆盖 > env 默认 > core 常量）、`admin.ts`（`AdminGateway`）、`auth.ts` 挂 `databaseHooks.session.create.before` 对封禁现查——不开 cookieCache，角色与封禁每请求见库；`community.ts` / `tools.ts` 的端口工厂改异步并在装配点读覆盖。
+ - **表现层** `apps/web`：`/admin` 概览、`/admin/users`、`/admin/content`、`/admin/tasks`、`/admin/config`、`/admin/audit` 六页（全部动态渲染）；Server Action 返回 void + `?ok=` 白名单 / `?error=` 键横幅；`features/admin/` 的导航、审计动作标签与视图层。
+ - **端到端** `apps/web/e2e/`：`admin-m5.spec.ts`（封禁 → 会话即断 → 解封需重登、自锁行、内容下架恢复含公开侧「内容不可见」、配置三态往返 + 审计行断言）、`admin-access.spec.ts` 的 `GUARDED_PATHS` 扩到 9 条、`ADMIN_PATHS` 扩到 7 条。
+ - **文档** [`DATA-MODEL.md`](DATA-MODEL.md) 新增 3.13（`site_config`）并增补 3.1 / 3.12；[`spec/SPEC-admin.md`](spec/SPEC-admin.md) 建立；[`TESTING.md`](TESTING.md) 回填 M5 用例数。
+ 
+ ### 行为变化
+ 
+ - **三项每小时配额的生效优先级改为「`site_config` 覆盖 > env 默认 > core 常量」**：`createCommunityPorts` / `createToolPorts` 变为异步；0 = 管理员显式关闭，null = 不覆盖回落 env——两者语义分开。
+ - **封禁即时生效**：登录被 `session.create.before` 拒绝，既有会话在封禁事务内删除；解封后必须重新登录。
+ 
+ ### 修复
+ 
+ - **点赞挂载同步丢计数（M3 遗留）**：`like-button.tsx` 的批量点赞响应里已解析出的计数被旧 hook 丢弃，详情页 ISR 15 秒窗口内的 reload 首帧显示 0。改为 `useSyncLikes` 同时回写 `count` 与 `liked`，响应缺条目时保留原值（`?? prev.count`）。由双视口端到端回归暴露，修复后社区点赞流在两视口均通过。
+ 
+ ### 已知债务（M5 新增，全文见 SPEC-admin「已知债务」）
+ 
+ - `audit_logs` 的 target 无外键（多态），删除 user 会级联掉以其为 target 的审计行——与 M3 同一取舍。
+ - 配额覆盖在网关装配点现读 DB，不在请求热路径；成本看板占位于 `/admin/tasks`，等 M4/M6 数据源回填。
+ - 任务重试 / 取消不在本轮（M6 任务语义），`/admin/tasks` 只读统计。
+ 
+ ---
+ 
+ ## M3 — 社区（2026-10-04）
+
+**状态**：交付物全部落盘；提交级检查链、生产构建与端到端回归（双视口）均已实跑。四条退出标准的证据见 [`ROADMAP.md`](ROADMAP.md) M3「状态」，验证方法与用例数见 [`TESTING.md`](TESTING.md)，表结构与触发器见 [`DATA-MODEL.md`](DATA-MODEL.md) 3.8–3.12。
+
+### 新增
+
+- **数据层** `packages/db`：`posts` / `comments` / `reactions` / `reports` / `audit_logs` 五张表（`schema/community.ts` + 迁移 `0002_community_tables.sql`）与仓储 `repositories/community.ts`（`(created_at,id)` 游标分页、软删除、`(post_id,user_id)` 复合主键 `ON CONFLICT` 幂等点赞、部分唯一索引幂等举报、管理员处置与审计写入同事务）。`audit_logs` 的追加只读触发器（行级 + 语句级，挡 `UPDATE` / `DELETE` / `TRUNCATE`）是 drizzle-kit 表达不了的手写 SQL，本机已实测全部拒绝。
+- **领域层** `packages/core/src/community/`：`posts`（发帖「校验 → 配额 → 写入」编排）、`comments`（评论配额与软删）、`reactions`（幂等点赞 + 计数缓存失效）、`reports`（举报不改内容状态；`confirmTakedown` 把下架、举报置终态、写审计锁进同一事务）、`rules`（标签/查询归一化、长度与配额常量）、`types`（失败码表）。
+- **平台层** `packages/platform`：`community.ts`（`CommunityGateway`：领域端口 + 页面读取；`generateStaticParams` 用的 `listRecentPostIds` / `listFeedTags`，`STATIC_PARAMS_POST_LIMIT = 20`）、`cache.ts`（点赞计数缓存：键 `community:post:{id}:likes`、TTL 60 秒、回填只在键存在时写、所有失败 best-effort）。
+- **表现层** `apps/web`：`/community`（ISR 30s）、`/community/[id]`（ISR 15s，`generateStaticParams` 预渲染最近 20 帖，新帖走 `dynamicRoutes` 按需生成）、`/community/tags/[tag]`（ISR 30s，预渲染已知标签）、`/community/search`（动态，随查询变化）、`/console/community` 与编辑页、`/admin/reports`（管理员确认下架 / 驳回）；点赞 / 批量计数 / 举报三个 API 路由；`features/community/` 的发帖、评论、乐观点赞、游标加载组件。
+- **端到端** `apps/web/e2e/`：`community.spec.ts`（真翻页、双上下文并发点赞、软删从列表与搜索消失、举报 → 管理员确认下架、360px 无横向滚动）、`admin.setup.ts` + `admin-seed.ts`（真实注册编排造管理员；第二轮回归修为「存在即复用」——管理员是 `audit_logs` 的 actor，删号会级联删审计行、被触发器拦截，套件跨运行不幂等，见下方已知债务）。
+- **运维脚本** `scripts/grant-admin.ts`（首个管理员的提权入口，复用 `@xsu/core` 角色常量，不写 `audit_logs`）与 `scripts/verify-reaction-cache.ts`（Redis 计数缓存手工回归；「提交级测试不起 Redis」的纪律见 [`TESTING.md`](TESTING.md) 第 5 节）。
+- **修复** `packages/db/src/client.ts` 在模块加载时自举加载仓库根 `.env`（`process.loadEnvFile`，不覆盖已有变量）——修复脚本与端到端在未注入环境变量时 `next build` 必败于缺 `DATABASE_URL` 的问题；修复不改任何包的依赖方向。
+- **文档** [`DATA-MODEL.md`](DATA-MODEL.md) 新增 3.8–3.12（五表、触发器、索引与「必须一起看的规则」）；[`TESTING.md`](TESTING.md) 回填 M3 用例数与覆盖率；[`docs/spec/SPEC-community.md`](spec/SPEC-community.md) 建立。
+
+### 行为变化
+
+- **点赞计数读 Redis 缓存，最多落后 60 秒。** 这是「读多写少不进数据库」的第一处落地：写路径（点赞 / 取消）实时失效键，读路径回填。「缓存只负责快、不负责正确」的语义与手工回归见 [`spec/SPEC-community.md`](spec/SPEC-community.md) 第 5、9 节。
+- **删除帖子和评论是软删除**（`deleted_at` 置时间戳）：行保留，列表、搜索与详情同时不可见，可见性统一走 `deleted_at is null` 谓词；审核线索不随内容消失。
+
+### 已知债务（M3 新增，全文见 SPEC-community「已知债务」）
+
+- 搜索是 `ILIKE` 顺序扫描，没装 `pg_trgm`；M3 量级够用，内容量上来后单独评估。
+- `audit_logs` 的 actor 级联（`ON DELETE CASCADE`）与追加只读触发器在「删除带审计行的管理员账号」这一点上互相冲突——级联产生的审计行 DELETE 会被触发器拒绝、进而拒绝整条删号语句。M3 没有删除账号的用户路径，暂时只是理论冲突；真要支持注销时需把该外键改为 `SET NULL` 或提供受控的审计归档路径。
+
+---
 
 ## M2 — 工具箱与 worker 基础设施（2026-10-03）
 

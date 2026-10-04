@@ -67,7 +67,7 @@ export default async function ConsoleToolRunDetailPage({
 
   const { id } = await params;
   /* 端口按当前用户建，`user_id` 在构造时就绑定了（见 `@xsu/platform` 的 `createToolPorts`）。 */
-  const ports = createToolPorts({ userId: access.user.id });
+  const ports = await createToolPorts({ userId: access.user.id });
   const run = await ports.getRun(id);
 
   if (!run) return <RunDenied denial={TOOL_FAILURE.runForbidden} />;

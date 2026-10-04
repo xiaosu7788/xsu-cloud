@@ -110,6 +110,17 @@
 
 ### M3 — 社区
 
+**状态**：四项交付物全部落盘；提交级检查链、生产构建与端到端回归（双视口）均已实跑（2026-10-04）。`pnpm typecheck`、`pnpm lint`、`pnpm format:check` 退出码 0；`pnpm test`（已内置 `--coverage`）**10 个文件 140 个用例全通过**；`pnpm --filter @xsu/web test:e2e`（`next build` + `next start` + 真实库，桌面 1280px / 移动 360px）**65 个用例 59 通过 / 6 跳过 / 0 失败**（跳过项仍是「构建产物与视口无关」与「44px 仅移动端」的按视口去重，见 [`TESTING.md`](TESTING.md) 3.1）。
+
+**四条退出标准现在都有实测证据**：
+
+- **标准 1（连续翻页不重复、不遗漏）**：领域层 `packages/core/tests/community.test.ts` 用内存假仓储翻满多页并断言 `(created_at,id)` 游标边界；e2e 造 25 帖在真实库上连续翻页，断言不重不漏。
+- **标准 2（并发点赞不产生重复行）**：`reactions` 的复合主键 `(post_id, user_id)` + `ON CONFLICT DO NOTHING`，领域层单测覆盖幂等语义；e2e 用两个独立浏览器上下文同时点赞同一条帖子，断言 `reactions` 仅一行、计数为 1。
+- **标准 3（软删除从列表与搜索同时消失）**：可见性统一走 `deleted_at is null` 谓词；e2e 作者删除后同时断言列表页与搜索页找不到、详情页是统一拒绝视图。
+- **标准 4（举报不自动下架、必须有管理员确认路径）**：领域层 `createReport` 不改内容状态，`confirmTakedown` 把下架、举报置终态、写审计锁进同一事务；e2e 走完整路径——举报后内容照旧可见，管理员在 `/admin/reports` 确认下架后内容消失、`audit_logs` 多一行。
+
+这一轮验证抓出并修掉了三个真实缺陷（细节见 [`CHANGELOG.md`](CHANGELOG.md) M3 节）：脚本与 `next build` 环境缺 `DATABASE_URL`（数据层改为模块加载时自举加载 `.env`）；ISR 动态路由缺 `generateStaticParams` 导致公开详情页与标签页不静态化（已补，`dynamicRoutes` 断言进端到端）；e2e 管理员夹具「先删后建」撞上审计触发器、套件跨运行不幂等（改为「存在即复用」）。第三个发现的根因——`audit_logs` 的 actor 级联与追加只读触发器的冲突——记录在 [`spec/SPEC-community.md`](spec/SPEC-community.md) 的已知债务里。
+
 **目标**：第一次真正撞上并发与缓存一致性问题。
 
 **交付物**
@@ -163,6 +174,15 @@
 - 审计日志表无 UPDATE/DELETE 路径。
 - 管理员越权访问被领域层拒绝并有测试覆盖。
 - 后台不成为新的动态渲染源：公开页静态化不受影响。
+
+**状态**：已完成。2026-10-05 实跑验证四条退出标准。交付落盘：`(admin)` 六页面（`/admin` 概览、`/admin/users`、`/admin/content`、`/admin/tasks`、`/admin/config`、`/admin/audit`）、`audit_logs` 的追加写仓储与只读查询页、`site_config` 表与配额覆盖入口（优先级 `site_config 覆盖 > env 默认 > core 常量`，调整入口即时生效）、封禁即拒新会话（`session.create.before` 现查 + 封禁事务内删除全部会话，`banned_at`/`ban_reason` 两列）。交付物第 4 条「用量与成本看板」降级：任务页提供只读运行统计，成本看板依赖 M4 的外部系统与计费口径，随 M4 一并补。顺手修掉 M3 遗留的真缺陷：点赞按钮挂载同步只回写 liked 不回写 count，ISR 15 秒窗口内 `page.reload()` 的首帧计数显示 0——`like-button.tsx` 现在同时回写两者。
+
+**四条退出标准现在都有实测证据**（2026-10-05；单测 `pnpm test` 11 个文件 161 个用例全过、core 分支覆盖率 97.96%，e2e 93 个用例 87 passed / 6 skipped / 0 failed，`typecheck` / `lint` / `format:check` 退出码 0）：
+
+- **敏感操作有审计行**：`packages/core/tests/admin.test.ts`（21 例）逐动作断言审计写入（封禁、解封、下架、恢复、配置更新），e2e 对每个动作断言 `?ok=` 横幅与 `audit_logs` 新行（`user-ban` / `user-unban` / `post-takedown` / `post-restore` / `site-config`）。
+- **审计日志表无 UPDATE/DELETE 路径**：迁移 `0003_admin_tables.sql` 未触碰两枚触发器；实跑 `select tgname from pg_trigger where tgrelid='audit_logs'::regclass and not tgisinternal` 复核 `append_only` 与 `no_truncate` 仍在；仓储层只有 insert 与 select，不存在 update/delete 审计路径。
+- **越权被领域层拒绝并有测试**：每个 admin 入口第一步都是 `requireAdminActor`；`admin.test.ts` 覆盖非管理员被拒；e2e 对 7 条 admin 路由断言统一拒绝视图、对 9 条受保护路由断言匿名同形 `307 → /sign-in`。
+- **公开页静态化不受影响**：`static-render.spec.ts` 全绿；构建路由表中 7 条 admin 路由全为 `ƒ` 动态渲染；`/` 等公开页预渲染清单与 M3 一致。
 
 ### M6 — 生图工作台
 
@@ -223,4 +243,4 @@
 
 - **M1 的 PWA 与 OAuth 都只验证到「不涉及外部交互的那一半」。** PWA：生产构建 + `next start` 下 `/manifest.webmanifest`（`application/manifest+json`，917 B）、`/sw.js`（`application/javascript`，8456 B）、`/offline.html`（3320 B）与 5 个图标（192 / 512 / maskable 192 / maskable 512 / apple-touch-icon，均 `image/png`）全部返回 200，字节数是按 `Accept-Encoding: identity` 请求后读到的 `Content-Length`；但 **service worker 的注册、离线提示与「有新版本」提示的交互没有在浏览器里跑过**——端到端用例里它是被刻意屏蔽的（`serviceWorkers: 'block'`），理由见 [`playwright.config.ts`](../apps/web/playwright.config.ts)。OAuth：本机没有 GitHub / Linux.do 的提供方凭证（`packages/platform` 对没配凭证的提供方整个去掉该键），真实回调与账号绑定流程未跑过。
 
-- **创建第一个管理员的途径不存在。** M1 计划里的 `scripts/grant-admin.mjs` 没建，目前把账号提升为 `admin` 只能直接改库；M1 的端到端只验了「非管理员被拒」这一侧，从未真的产出一个 `admin` 账号。事实与后果见 [`DATA-MODEL.md`](DATA-MODEL.md) 第 5.3 节与它的「已知债务」。M3 要落 `(admin)` 后台，开工前必须先补这个入口。
+- **创建第一个管理员的途径——已在 M3 补上。** `scripts/grant-admin.ts` 把既有账号提升为 `admin`（复用 `@xsu/core` 的角色常量，提权不写 `audit_logs`），本机已实跑产出 `admin@xsu.local`；端到端夹具 `apps/web/e2e/admin-seed.ts` 走真实注册编排造出管理员并登录，`/admin/reports` 的确认下架 / 驳回在 e2e 中真实走通。完整的管理员运营面（用户管理、内容管理、任务管理、站点配置、审计查询）已在 M5 落地，见上文 M5「状态」。

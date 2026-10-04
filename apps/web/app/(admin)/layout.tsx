@@ -20,22 +20,39 @@
  *
  * `ResponsiveNav` 在移动端不渲染侧边栏底部，账号面板在手机上就没有落点：后台管理员在手机上
  * 会连退出登录都找不到。而 `/console/settings` 对任何合法角色都开放、内容与角色无关，
- * 因此先复用它。后台自己的账号与站点配置项排在 M5，到那时再决定是否搬进来——现在为它
- * 多做一份页面，等于把「同一组操作两套实现」这条问题提前引入。
+ * 因此先复用它。账号与站点设置本身仍归用户控制台，后台只放与角色相关的管理入口，
+ * 「同一组操作两套实现」的问题不会被提前引入。
  *
- * 后台真正的入口（用户、内容、任务、配置、审计）都在 M5，落地时才加进 `ADMIN_NAV_ITEMS`；
- * 现在写进去只会得到 404。
+ * 后台的五个入口（用户、内容、任务、配置、审计）随 M5 落地加进了 `ADMIN_NAV_ITEMS`，
+ * 与举报处理、账号设置共八项；`/admin` 仍是所有子页面的前缀，概览页必须 `exact`。
  */
 import Link from 'next/link';
-import { LayoutDashboard, Settings } from 'lucide-react';
+import {
+  Activity,
+  FileText,
+  Flag,
+  LayoutDashboard,
+  ScrollText,
+  Settings,
+  SlidersHorizontal,
+  Users,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { ResponsiveNav, type NavItem } from '@/components/responsive-nav';
 
+import {
+  ADMIN_AUDIT,
+  ADMIN_CONFIG,
+  ADMIN_CONTENT,
+  ADMIN_TASKS,
+  ADMIN_USERS,
+} from '@/features/admin/routes';
 import { AccessDenied } from '@/features/auth/access-denied';
 import { AccountPanel } from '@/features/auth/account-panel';
 import { redirectToSignInIfUnauthenticated } from '@/features/auth/guard';
 import { ADMIN_HOME, CONSOLE_SETTINGS, SITE_HOME } from '@/features/auth/routes';
+import { ADMIN_REPORTS } from '@/features/community/routes';
 import { readAdminAccess } from '@/features/auth/session';
 
 const ADMIN_NAV_ITEMS: readonly NavItem[] = [
@@ -43,8 +60,38 @@ const ADMIN_NAV_ITEMS: readonly NavItem[] = [
     href: ADMIN_HOME,
     label: '后台概览',
     icon: <LayoutDashboard aria-hidden className="size-5" />,
-    /* `/admin` 是将来所有后台子页面的前缀，不精确匹配会让它在每个子页面都高亮。 */
+    /* `/admin` 是所有后台子页面的前缀，不精确匹配会让它在每个子页面都高亮。 */
     exact: true,
+  },
+  {
+    href: ADMIN_USERS,
+    label: '用户管理',
+    icon: <Users aria-hidden className="size-5" />,
+  },
+  {
+    href: ADMIN_CONTENT,
+    label: '内容管理',
+    icon: <FileText aria-hidden className="size-5" />,
+  },
+  {
+    href: ADMIN_TASKS,
+    label: '任务管理',
+    icon: <Activity aria-hidden className="size-5" />,
+  },
+  {
+    href: ADMIN_CONFIG,
+    label: '站点配置',
+    icon: <SlidersHorizontal aria-hidden className="size-5" />,
+  },
+  {
+    href: ADMIN_AUDIT,
+    label: '审计日志',
+    icon: <ScrollText aria-hidden className="size-5" />,
+  },
+  {
+    href: ADMIN_REPORTS,
+    label: '举报处理',
+    icon: <Flag aria-hidden className="size-5" />,
   },
   {
     href: CONSOLE_SETTINGS,

@@ -26,6 +26,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 
 import { SessionBadge } from '@/features/auth/session-badge';
 import { SITE_HOME } from '@/features/auth/routes';
+import { COMMUNITY_HOME } from '@/features/community/routes';
 
 /**
  * 顶栏链接。
@@ -34,12 +35,15 @@ import { SITE_HOME } from '@/features/auth/routes';
  * 严重得多——「导航里出现的每个路径都必须真的有一个页面」是一条靠人工 review 维持的约束，
  * 见 `features/auth/routes.ts` 文件头。
  *
- * 工具箱（M2）的入口**暂时不在这里**，而在首页正文的「工具箱」按钮上：顶栏多出一个链接就
- * 意味着公开入口达到两个，按 `components/site-nav.tsx` 文件头写下的条件要同时补移动端壳，
- * 那件事与社区的公开入口一起做，不在 M2 的范围里。`docs/spec/SPEC-tools.md` 第 6 节对此只
- * 要求「首页补上 `/tools` 入口」。
+ * 工具箱（M2）与社区（M3）的入口已在 M3 一起加进顶栏：公开入口达到两个以上后，
+ * `components/site-nav.tsx` 按 M1 写下的条件补上了移动底部 Tab（首页 / 社区 / 工具箱三项）。
+ * 此后每个新公开页落地时都要同时更新这份清单与移动 Tab——它们由同一个数组渲染。
  */
-const SITE_NAV_ITEMS = [{ href: SITE_HOME, label: '首页', exact: true }] as const;
+const SITE_NAV_ITEMS = [
+  { href: SITE_HOME, label: '首页', exact: true },
+  { href: COMMUNITY_HOME, label: '社区', exact: false },
+  { href: '/tools', label: '工具箱', exact: false },
+] as const;
 
 export const metadata: Metadata = {
   description: '个人云站：中转站控制台、社区、工具箱与生图工作台。',
@@ -67,8 +71,14 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
       {/*
        * `flex-1` 让内容不足一屏时也能把页面撑满，避免深色下页脚下露出一条异色。
        * 宽度与顶栏一致（`max-w-5xl` + `px-4`），否则两者的左右边缘会错开。
+       *
+       * 移动端 `pb-[calc(3.5rem+env(safe-area-inset-bottom))]`：给 `SiteNav` 的底部 Tab
+       * 让位（`h-14` = 3.5rem），与 `ResponsiveNav` 内容区的写法一致——安全区由 Tab 栏自己
+       * 吃掉，内容区只让出 Tab 栏高度本身。`md:pb-0`：桌面端没有 Tab，恢复原 `py-8`。
        */}
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">{children}</main>
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
+        {children}
+      </main>
     </div>
   );
 }

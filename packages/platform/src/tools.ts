@@ -38,6 +38,7 @@ import {
 } from '@xsu/db';
 
 import { getServerEnv, type ServerEnv } from './env';
+import { resolveQuotaOverrides } from './quota';
 
 export type ToolPortsDeps = {
   /** 当前用户。所有读写都以它为界，见文件头。 */
@@ -69,15 +70,18 @@ export type ToolPorts = ToolRunPorts & {
 
 /**
  * 建一个工具箱端口集合。每次请求都新建即可——它自己不持有连接，也不缓存数据。
+ * 工具执行配额在构造时现读 `site_config` 的站点级覆盖（`./quota`，SPEC-admin 第 4 节），
+ * 本函数因此是异步的；调用方 `await`。
  *
  * **校验 slug 是调用方的责任**（领域层的 `isRegisteredToolSlug`）：收藏表与运行历史表都
  * 没有指向目录的外键（`docs/spec/SPEC-tools.md` 第 2 节），这里不做判断正是为了不让
  * 「判断」有两份实现。
  */
-export function createToolPorts(deps: ToolPortsDeps): ToolPorts {
+export async function createToolPorts(deps: ToolPortsDeps): Promise<ToolPorts> {
   const db = deps.db ?? getDb();
   const env = deps.env ?? getServerEnv();
   const userId = deps.userId;
+  const quotas = await resolveQuotaOverrides(db, env);
 
   return {
     /*
@@ -100,7 +104,7 @@ export function createToolPorts(deps: ToolPortsDeps): ToolPorts {
       return insertToolRun(db, run);
     },
 
-    quotaPerHour: env.tools.quotaPerHour,
+    quotaPerHour: quotas.toolQuotaPerHour,
 
     listRuns(params = {}) {
       return listToolRuns(db, { userId, limit: params.limit ?? TOOL_RUN_PAGE_SIZE_DEFAULT });

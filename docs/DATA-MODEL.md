@@ -44,7 +44,12 @@
 | [`invites`](#35-invites) | `used_by` / `created_by` | M1 | 已建（迁移 `0000`） |
 | [`tool_runs`](#36-tool_runs) | `user_id` | M2 | 已建（迁移 `0001`） |
 | [`tool_favorites`](#37-tool_favorites) | `user_id` | M2 | 已建（迁移 `0001`） |
-
+| [`posts`](#38-posts) | `author_id` | M3 | 已建（迁移 `0002`） |
+| [`comments`](#39-comments) | `post_id` / `author_id` | M3 | 已建（迁移 `0002`） |
+| [`reactions`](#310-reactions) | `post_id` / `user_id` | M3 | 已建（迁移 `0002`） |
+| [`reports`](#311-reports) | `reporter_id` / `handled_by` | M3 | 已建（迁移 `0002`） |
+ | [`audit_logs`](#312-audit_logs) | `actor_id`（见 3.12 第 3 条） | M3 | 已建（迁移 `0002`） |
+ | [`site_config`](#313-site_config) | 站点配置本体（见 3.13 第 3 条） | M5 | 已建（迁移 `0003`） |
 ---
 
 ## 3. 逐表说明
@@ -62,10 +67,13 @@
 | `image` | text | nullable | 头像地址 |
 | `role` | text | not null, default `'user'` | 取值见下 |
 | `created_at` / `updated_at` | timestamptz | not null, default `now()` | — |
+ | `banned_at` | timestamptz | nullable | 非空即被封禁，语义见下 |
+ | `ban_reason` | text | nullable | 封禁理由；上限 `BAN_REASON_MAX`（领域层） |
 
 **`role` 的取值**由 `ROLES = ['user', 'admin'] as const` 定义，领域层从 `@xsu/db/schema` 导入后复用它（`packages/core/src/access.ts` 的 `Role`）。**不要在别处再写一份角色列表**，也不要写 `'admin'` 字面量——领域层导出了 `ADMIN_ROLE` 常量。
 
-**提升为 `admin` 只能由管理员在后台操作，且必须写审计日志**（红线 8）。M1 不做后台改角色的界面，首个管理员用脚本直接改库（见第 5.3 节）。
+ **提升为 `admin` 只能由管理员在后台操作，且必须写审计日志**（红线 8）。首个管理员用脚本直接改库（`scripts/grant-admin.ts`，见第 5.3 节）；此后的角色变更走 `/admin/users`（M5 领域入口 `updateUserRole`：禁止改自己、最后一个 admin 不可降权，见 [`spec/SPEC-admin.md`](spec/SPEC-admin.md) 第 3 节）。
+ **封禁（M5）**：`banned_at` 非空即被封禁。拦截不在登录端点，而在 Better Auth 的 `databaseHooks.session.create.before`——每次会话创建现查 `user.banned_at`，非空即拒绝建会话（`packages/platform/src/auth.ts`）；封禁事务内同时删除该用户全部 `session` 行，已有会话即时下线，解封后需重新登录。判定与审计（`user.ban` / `user.unban`）在 `packages/core/src/admin/`；禁止封自己与「最后一个 admin 不可封禁」也在这一层挡下（`selfBan` / `lastAdmin`）。
 
 ### 3.2 `session`
 
@@ -211,6 +219,133 @@
 1. **取消收藏是删行，不是置标志位。** 收藏没有历史语义，留一行 `favorited: false` 只会让「我的收藏」查询多一个过滤条件。
 2. **重复收藏靠唯一索引挡，不靠「先查再插」。** 后者在并发下会留下两行；仓储用 `ON CONFLICT DO NOTHING`（`addToolFavorite`）。
 
+### 3.8 `posts`
+
+定义：`packages/db/src/schema/community.ts`。社区帖子（PRD 3.2），Feed / 标签页 / 搜索与详情页的数据源。
+
+| 列 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | text | PK | 由应用层生成（`ports.newId()`） |
+| `author_id` | text | not null, FK → `user.id` ON DELETE CASCADE | 归属（红线 6）。作者删号 → 帖子级联硬删，其下评论随之消失 |
+| `title` / `body` | text | not null | 长度由领域层校验（`validatePostInput`），数据库不重复约束 |
+| `tags` | `text[]` | not null, default `'{}'` | 已归一化的小写标签数组（切分 → trim → 转小写 → 去重），GIN 索引的服务对象 |
+| `created_at` / `updated_at` | timestamptz | not null, default `now()` | 领域层取 `ports.now()`，一次操作只取一次——配额窗口与落库必须是同一时间点 |
+| `deleted_at` | timestamptz | nullable | **软删除标记**：作者删帖或管理员下架写它，行本身保留 |
+
+索引：`posts_feed_idx (created_at, id) WHERE deleted_at is null`、`posts_author_idx (author_id, created_at)`、`posts_tags_idx` GIN（部分索引，同 feed）。
+
+四条必须一起看的规则：
+
+1. **翻页游标是 `(created_at, id)` 两列一起比，不是单列。** 只按 `created_at` 排序时，同一毫秒（或同一次批量写入）里的多行次序不稳定，翻页就会重复或漏行。`posts_feed_idx` 建成两列复合并在仓储里两列一起比（`repositories/community.ts` 的 `listPosts`），「连续翻页不重复不遗漏」（PRD 3.2 验收 1）靠的是这个组合，不是单列索引。列表行自带 `createdAt`，所以列表项可以直接当游标点用（`posts.ts` 的 `cursorOf`）。
+2. **删除是软删除，读路径分层过滤。** 数据层的列表查询带 `WHERE deleted_at is null`（三个索引都用部分索引只收活行）；单条读取**不过滤** `deleted_at`——`getPostById` 返回带 `deletedAt` 的行。这样做是因为「这个 id 不存在」与「存在但已被删除 / 下架」是两件事：前者 404，后者渲染统一的拒绝视图（`schema/community.ts` 的 `PostDetail` 注释）。**写路径的门在领域层**：`loadVisiblePost`（`posts.ts`）把已删行挡回 `null`，评论、点赞、举报全部先过它，否则「已下架的内容还能被点赞 / 评论 / 举报」这条路就留着。
+3. **发帖顺序是 校验 → 配额 → 写入，配额拒绝既不落行也不计数。** 落了行，「被拒 → 计数 +1 → 更容易被拒」会自我放大，把配额变成越试越紧的惩罚（`tools/run-tool.ts` 是同一条取舍）。配额窗口按 `countPostsSince` 计（作者维度走 `posts_author_idx`）；配额值来自配置（`ports.postQuotaPerHour`），数据库不存。
+4. **标签在写入前归一化、去重。** `normalizeTags`（`rules.ts`）按中英文逗号、顿号与空白切分，trim 后转小写、按序去重——`TypeScript` / `typescript` / `TYPESCRIPT` 收敛成一个；个数上限按**去重之后**算（独立失败码 `tagLimitExceeded`，与「某字段写长了」分开报，表单才能提示「删掉多余的标签」）。浏览页的匹配用 `tags @> array[?]` 包含查询（走 GIN），搜索关键词则不转小写（`ILIKE` 本身不区分大小写）。
+
+### 3.9 `comments`
+
+定义：`packages/db/src/schema/community.ts`。帖子下的评论（PRD 3.2）。
+
+| 列 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | text | PK | 由应用层生成 |
+| `post_id` | text | not null, FK → `posts.id` ON DELETE CASCADE | 帖子级联硬删（作者删号）时评论跟着消失 |
+| `author_id` | text | not null, FK → `user.id` ON DELETE CASCADE | 归属（红线 6） |
+| `body` | text | not null | 长度由领域层校验（`validateCommentInput`） |
+| `created_at` / `updated_at` | timestamptz | not null, default `now()` | 同 3.8 |
+| `deleted_at` | timestamptz | nullable | 软删除标记（作者删评论 / 管理员下架） |
+
+索引：`comments_post_idx (post_id, created_at, id) WHERE deleted_at is null`、`comments_author_idx (author_id, created_at)`。
+
+三条规则：
+
+1. **评论排序与帖子相反：正序，最早的在前。** 详情页从上往下读，会话顺序就是时间正序；`comments_post_idx` 的三列 `(post_id, created_at, id)` 与该查询同序——先定位帖子、再按时间读、同刻用 `id` 定序防重漏（同 3.8 第 1 条）。游标格式与帖子共用一套（`paginate` 两边通用），方向由查询决定。
+2. **发评论顺序是 目标帖子还在 → 校验 → 配额 → 写入。** 目标检查放在校验之前是故意的：对一篇已下架的帖子，无论正文写得对不对，结论都是「这篇帖子不存在或已被删除」，先判这个能让失败原因贴近用户实际看到的东西。配额（`commentQuotaPerHour`）同样「拒绝不落行不计数」（`types.ts` 文件头第 3 条）。
+3. **删评论不影响帖子与其它缓存。** 作者删自己的评论走 `decideCommentAccess`（只有作者本人，管理员不经此路径）+ 软删除。M3 没有评论计数、列表页不展示评论数，所以没有需要跟着失效的缓存；数据层列表查询的 `WHERE deleted_at is null` 负责把已删评论挡在列表外（纵深防御，单条的门在 `loadVisibleComment`）。
+
+### 3.10 `reactions`
+
+定义：`packages/db/src/schema/community.ts`。点赞（PRD 3.2）。**没有 `id` 列**——一行点赞由「谁赞了哪个帖子」唯一决定，代理主键只给查询增加一个无意义的唯一值。
+
+| 列 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `post_id` | text | not null, 复合 PK 之一, FK → `posts.id` ON DELETE CASCADE | 帖子消失 → 点赞行无意义，级联清理 |
+| `user_id` | text | not null, 复合 PK 之一, FK → `user.id` ON DELETE CASCADE | 归属（红线 6） |
+| `kind` | text | not null, default `'like'`, CHECK `in ('like')` | M3 只有一种反应；单值 CHECK 把「将来加第二种」留成显式迁移，而不是静默写出第三种值 |
+| `created_at` | timestamptz | not null, default `now()` | — |
+
+约束：`reactions_pk PRIMARY KEY (post_id, user_id)`——就是并发防线本体（见下第 1 条）；`reactions_kind_check`。**无二级索引**：主键索引已覆盖「按帖子计数」与「按用户反查」两类查询。
+
+三条规则：
+
+1. **重复点赞不是错误，唯一主键就是并发防线。** 并发两次点赞的坏结果有两种：第二次拿到「已存在」报错（用户看到莫名失败），或计数被加两次（缓存要等 60 秒重建才修得回来，那 60 秒里数字是错的）。两道防线一起挡：数据层 `addReaction` 用 `ON CONFLICT DO NOTHING` 把冲突变成「什么都没发生」（`reactions_pk` 兜底，不靠「先查再插」）；仓储返回 `boolean` 告诉领域层**是否真的插入了行**，只有 `inserted === true` 才去 `ports.reactions.increment(post.id)` 改计数缓存（`reactions.ts` 的 `likePost`）。于是「点两次」的结果是 `liked: true` 且计数为 1，幂等语义与 PRD 3.2 验收 2 一致。取消侧同理：`removeReaction` 删 0 行时**不减**计数，否则「取消两次」会把别人的点赞数减掉。
+2. **计数缓存只负责快，不负责正确。** 点赞数落在 Redis（`packages/platform/src/cache.ts`，TTL 60 秒）；未命中回数据库算一遍并回填，`increment` / `decrement` 遇到「键不存在」什么都不做——防止把从未回填过的键从 0 改成 ±1 写出脏数。失效（回库重算）是唯一写路径。缓存的六条行为断言有手工回归脚本：`scripts/verify-reaction-cache.ts`（提交级测试不起 Redis，纪律见 [`TESTING.md`](TESTING.md)）。
+3. **自己的帖子也能点赞。** M3 不做限制（SPEC 第 4 节），点赞只过 `loadVisiblePost` 这一道「帖子还活着」的门。
+
+### 3.11 `reports`
+
+定义：`packages/db/src/schema/community.ts`。举报与审核（PRD 3.2）。**举报目标不设外键**：目标类型是 `post` / `comment` 二选一的多态引用，外键表达不了「按类型指向两张表之一」，目标存在性与存活由领域层判定（见下第 2 条）。
+
+| 列 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | text | PK | 由应用层生成 |
+| `reporter_id` | text | not null, FK → `user.id` ON DELETE CASCADE | 归属（红线 6） |
+| `target_type` | text | not null, CHECK `in ('post','comment')` | 多态目标类型，**无外键**，见上 |
+| `target_id` | text | not null | 目标 id；同 `audit_logs.target_id` 的语义——目标被删后举报行必须还在，审核页不能丢线索 |
+| `reason` | text | not null | 举报理由，长度由领域层校验 |
+| `status` | text | not null, default `'open'`, CHECK `in ('open','takedown','dismissed')` | `open` = 待处理；两个终态由 `auditActionFor` 映射审计动作 |
+| `created_at` | timestamptz | not null, default `now()` | — |
+| `handled_by` / `handled_at` | text / timestamptz | nullable; `handled_by` FK → `user.id` ON DELETE **SET NULL** | 处理人 / 处理时刻；`handled_by` SET NULL——管理员删号后举报的处理事实仍在，只是没了处理人档案 |
+
+约束与索引：`reports_target_type_check`、`reports_status_check`、`reports_handled_check ((status='open') = (handled_at is null))`；唯一部分索引 `reports_open_unique_idx (reporter_id, target_type, target_id) WHERE status='open'`、`reports_status_created_idx (status, created_at)`。
+
+四条必须一起看的规则：
+
+1. **举报不自动下架内容，必须有管理员确认路径。** `createReport` **不改任何内容状态**——举报后内容照旧可见，这是 PRD 3.2 验收 4 的原话。内容下架只发生在管理员 `confirmTakedown`，且与举报置终态、写审计行**同事务**（红线 8）：不允许出现「内容已下架、审计没落」。举报自身同样软删目标（`deleted_at`），内容行保留。
+2. **目标存活与「同一人重复举报」都在领域层/索引层解决。** 举报前先过 `loadVisiblePost` / `loadVisibleComment`——目标 id 没有外键，存在性只能由领域层判，且不能举报一条已经看不见的内容（否则管理员确认下架时目标早就没了）。同一人对同一目标已有未处理举报时幂等返回既有那条（常见路径靠回读，并发兜底靠 `reports_open_unique_idx` + `ON CONFLICT DO NOTHING`，收敛流程见 `reports.ts` 的 `createReport` 注释）。
+3. **`reports_handled_check` 把「状态与处理时刻」锁成一个不变量。** `status = 'open'` ⇔ `handled_at IS NULL`，两列不可能出现「已处理但没时刻」或「open 却带处理时刻」的中间态；两列由领域层在同一事务里一起写。
+4. **管理队列只扫 `open`。** `listPendingReports` 走 `reports_status_created_idx`（先定状态再按时间排）；终态行不进队列但保留——「这条举报当时怎么处理的」靠它与 `audit_logs` 的关联回答。
+
+### 3.12 `audit_logs`
+
+定义：`packages/db/src/schema/community.ts`。管理操作的只追加审计（PRD 4.4 / 红线 8）。
+
+| 列 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | text | PK | 由应用层生成 |
+| `actor_id` | text | not null, FK → `user.id` ON DELETE **CASCADE** | 操作者（管理员）。见下第 3 条 |
+| `action` | text | not null，**无 CHECK** | 取值是代码字面量 `AUDIT_ACTION`（`report.takedown` / `report.dismiss`），见下第 1 条 |
+| `target_type` | text | not null, CHECK `in ('post','comment')` | 被操作对象的类型 |
+| `target_id` | text | not null | 被操作对象的 id，**无外键**——内容被级联硬删后审计行必须还在 |
+| `detail` | text | nullable | 补充说明 |
+| `created_at` | timestamptz | not null, default `now()` | 管理动作发生时刻 |
+
+索引：`audit_logs_created_idx (created_at)`、`audit_logs_actor_idx (actor_id, created_at)`、`audit_logs_target_idx (target_type, target_id, created_at)`。
+
+三条必须一起看的规则：
+
+1. **「只追加」由触发器兜底，行级与语句级各挡一道。** `BEFORE UPDATE OR DELETE`（行级）与 `BEFORE TRUNCATE`（语句级）都抛异常——TRUNCATE 不触发行级触发器，漏掉它就留了一条清空审计的路。drizzle-kit 不表达触发器，这两段是迁移 `0002_community_tables.sql` 里的手写 SQL，`OR REPLACE` / `IF EXISTS` 保证迁移被手工重放时也成立。本机已实测：UPDATE / DELETE 均被拒绝（见「怎么验证」）。
+ 2. **`action` 不加 CHECK 是有意的。** 要记的动作只会越来越多，每加一个动作就写一条迁移是过度约束；取值唯一来源是 `@xsu/core` 的 `AUDIT_ACTION` 字面量表。M3 只有管理员处理举报的两个动作；M5 扩到角色变更、封禁 / 解封、帖子与评论下架 / 恢复、站点配置，`target_type` 的 CHECK 随之扩为 `('post','comment','user','site_config')`（迁移 `0003` 里 DROP 旧约束再 ADD——drizzle 对 CHECK 变更的表达不完整，这条是生成后手工核对的）。写审计与业务变更同事务的纪律不变（红线 8）。
+3. **`actor_id` 级联、`target_id` 无外键，是审计语义的直接推论。** 管理员账号消失时其操作记录跟着走；而被下架的内容可能随作者删除被级联硬删（删帖 → 评论级联消失），审计行若跟着内容走就查不到「当初谁下的架」——审计的义务是留住管理动作，不是替内容续命。
+
+ 
+ ### 3.13 `site_config`
+ 
+ 定义：`packages/db/src/schema/admin.ts`。站点级配额覆盖（M5）——**整张表永远只有一行**，`id` 固定为 1。
+ 
+ | 列 | 类型 | 约束 | 说明 |
+ | --- | --- | --- | --- |
+ | `id` | integer | PK，CHECK `id = 1` | 单行由数据库 CHECK 保证，不靠文档约定 |
+ | `post_quota_per_hour` / `comment_quota_per_hour` / `tool_quota_per_hour` | integer | nullable，各自 CHECK `is null or (>= 0 and <= 1000000)` | 三项每小时配额的站点级覆盖 |
+ | `updated_by` | text | nullable, FK → `user.id` ON DELETE SET NULL | 最后改动者 |
+ | `updated_at` | timestamptz | not null, default `now()` | 最后改动时间 |
+ 
+ 无二级索引：单行表，主键即全部。
+ 
+ 三条必须一起看的规则：
+ 
+ 1. **单行由 CHECK 约束保证。** `site_config_id_check` 让第二行插不进去；领域层 upsert 走 `ON CONFLICT (id) DO UPDATE`（动作 `site.config.update`），读侧 `resolveQuotaOverrides`（`packages/platform/src/quota.ts`）在网关装配点现读这一行，优先级 `site_config` 覆盖 > env 默认 > core 常量。
+ 2. **`null` = 不覆盖，`0` = 关闭，两者语义必须分开。** null 回落到 env 默认，0 是管理员显式关闭该动作——把 null 当 0 处理等于悄悄关站，这是覆盖列必须 nullable 而不是 default 0 的原因。`updated_by` 用 SET NULL：管理员删号后配置事实仍在，只是没了改动者档案（同 3.11 `handled_by` 的取舍）。
+ 3. **为什么它没有 `user_id` 却不算违反红线 6（1.1 节）**：它是站点配置本体，不含用户数据；「谁在何时把什么改成什么」由 `audit_logs`（action `site.config.update`，target_type `site_config`）回答，配置变更与审计行同事务落盘。
 ---
 
 ## 4. 索引
@@ -224,8 +359,18 @@
 | `invites_used_by_idx` | invites | `used_by` | 按使用者反查邀请码来源 |
 | `tool_runs_user_created_idx` | tool_runs | `user_id, created_at` | 一个索引服务两件事：运行历史列表（按用户取、时间倒序）与配额窗口计数（`WHERE user_id = ? AND created_at >= ?`），两者都是「先定用户再切时间」 |
 | `tool_favorites_user_tool_idx` | tool_favorites | `user_id, tool_slug`（唯一） | 「我的收藏」列表；同时挡重复收藏（`ON CONFLICT DO NOTHING`），不靠「先查再插」 |
+| `posts_feed_idx` | posts | `created_at, id`（部分索引：`WHERE deleted_at is null`） | Feed / 标签页 / 搜索的游标翻页——`(created_at, id)` 两列一起比才不重不漏（见 3.8 第 1 条） |
+| `posts_author_idx` | posts | `author_id, created_at` | 「我的帖子」列表与配额窗口计数（先定作者再切时间） |
+| `posts_tags_idx` | posts | GIN `tags`（部分索引：`WHERE deleted_at is null`） | 标签浏览的 `tags @> array[?]` 包含查询 |
+| `comments_post_idx` | comments | `post_id, created_at, id`（部分索引：`WHERE deleted_at is null`） | 帖子详情页的评论列表 |
+| `comments_author_idx` | comments | `author_id, created_at` | 按作者收集评论 |
+| `reports_open_unique_idx` | reports | `reporter_id, target_type, target_id`（唯一，部分索引：`WHERE status = 'open'`） | 挡同一人对同一目标重复举报（`ON CONFLICT DO NOTHING`），见 3.11 第 2 条 |
+| `reports_status_created_idx` | reports | `status, created_at` | 管理后台的待处理举报队列（`WHERE status = 'open'`） |
+| `audit_logs_created_idx` | audit_logs | `created_at` | 审计页按时间浏览（见 3.12） |
+| `audit_logs_actor_idx` | audit_logs | `actor_id, created_at` | 按操作者查审计 |
+| `audit_logs_target_idx` | audit_logs | `target_type, target_id, created_at` | 按被操作对象反查审计 |
 
-另外由 `unique` 约束隐式建出的唯一索引：`user.email`、`session.token`、`invites.code`。
+ 另外由 `unique` 约束与主键隐式建出的唯一索引：`user.email`、`session.token`、`invites.code`、`reactions` 的复合主键 `(post_id, user_id)`（`reactions_pk`——并发点赞不产生重复行的落点，见 3.10 第 1 条）与 `site_config` 的单列主键（单行表，见 3.13）。
 
 **不建 `invites.code` 之外的邀请码索引**：`code` 的 unique 索引同时服务等值查询与原子消费的 `WHERE code = ...`。
 
@@ -259,11 +404,12 @@ pnpm --filter @xsu/db db:check
 
 `scripts/` 下的一次性脚本，跑法随脚本头部注释：
 
-| 脚本 | 用途 | 状态 |
+ | 脚本 | 用途 | 状态 |
 | --- | --- | --- |
-| `scripts/grant-admin.mjs` | 把指定邮箱提升为 `admin`（首个管理员的唯一来源） | **未建 —— M1 计划内但未兑现** |
+| `scripts/grant-admin.ts` | 把指定邮箱提升为 `admin`（首个管理员的唯一来源） | 已建（M3，2026-10-04 实跑验证三条路径：提权 / 不存在 exit 1 / 幂等跳过） |
 | `scripts/create-invites.mjs` | 手动发放邀请码 | **未建 —— M1 计划内但未兑现**（目前发码只能直接改库，或照 `apps/web/e2e/` 的夹具插一行一次性码） |
 | `scripts/enqueue-manual-jobs.ts` | 手工把一条 `mail.send` 与一条 `maintenance.cleanup` 塞进 Redis 队列，配合 `pnpm --filter @xsu/web worker` 做队列与清理任务的手工回归 | 已建（M2） |
+| `scripts/verify-reaction-cache.ts` | 点赞计数缓存（`packages/platform/src/cache.ts`）的手工回归：六条行为断言（回填命中 / 键在才改 / 减不破键 / 失效 / 连不上时 best-effort），其中「键不在时 increment 什么都不做」是防止计数被写坏的实测防线 | 已建（M3，2026-10-04 实跑验证 8 项断言全过） |
 
 脚本直接连库，**不经过应用**，所以每次执行都会被记录在操作者自己的终端历史里；这不是审计日志，审计日志要求见红线 8，细则见 `docs/SECURITY.md`（**尚未创建**）。
 
@@ -272,10 +418,10 @@ pnpm --filter @xsu/db db:check
 ## 怎么验证
 
 - **迁移与 schema 一致**：`pnpm --filter @xsu/db db:check` 通过（无 drift）。
-- **迁移可应用**：实跑 `pnpm --filter @xsu/db db:migrate`，随后
-  `docker exec xsu-postgres psql -U xsu -d xsu -c "\dt"` 应列出 `user` / `session` / `account` / `verification` / `invites`（迁移 `0000`）与 `tool_runs` / `tool_favorites`（迁移 `0001`）共七张表，且 `drizzle.__drizzle_migrations` 有对应记录。**M1 实跑通过（2026-10-01，5 张表齐）；M2 的 `0001_tools_tables.sql` 已在本机实跑生效。**
-- **本文件与代码一致**：逐列对照 `packages/db/src/schema/*.ts` 与 `packages/db/migrations/*.sql`。不一致即缺陷，改本文件。
-- **领域层规则**：邀请码、角色与工具判定都有测试覆盖 —— `packages/core/tests/` 5 个文件 89 例（invites 14、tools 39、accounts 13、registration 14、access 9）、`packages/platform/tests/` 3 个文件 28 例、分层铁律 12 例，合计 **9 个文件 129 例，`pnpm test` 全通过（已实跑）**。`packages/core` 分支覆盖率 98%（门槛 80%，见 `vitest.config.ts`）。
+ - **迁移可应用**：实跑 `pnpm --filter @xsu/db db:migrate`，随后
+   `docker exec xsu-postgres psql -U xsu -d xsu -c "\dt"` 应列出 `user` / `session` / `account` / `verification` / `invites`（迁移 `0000`）、`tool_runs` / `tool_favorites`（迁移 `0001`）、`posts` / `comments` / `reactions` / `reports` / `audit_logs`（迁移 `0002`）与 `site_config`（迁移 `0003`）共 13 张表，且 `drizzle.__drizzle_migrations` 有对应记录。**M1 实跑通过（2026-10-01，5 张表齐）；M2 的 `0001_tools_tables.sql` 已在本机实跑生效（2026-10-03）；M3 的 `0002_community_tables.sql` 已在本机实跑生效（2026-10-04）；M5 的 `0003_admin_tables.sql` 已在本机实跑生效（2026-10-05：`site_config` 建表、`user` 加封禁两列、`audit_logs.target_type` CHECK 扩为四值），`db:check` 无 drift。**
+ - **本文件与代码一致**：逐列对照 `packages/db/src/schema/*.ts` 与 `packages/db/migrations/*.sql`。不一致即缺陷，改本文件。
+ - **领域层规则**：邀请码、角色、工具、社区与管理员判定都有测试覆盖 —— `packages/core/tests/` 7 个文件 121 例（invites 14、tools 39、accounts 13、registration 14、access 9、community 11、admin 21）、`packages/platform/tests/` 3 个文件 28 例、分层铁律 12 例，合计 **11 个文件 161 例，`pnpm test` 全通过（M5，2026-10-05 已实跑）**。`packages/core` 分支覆盖率 97.96%（admin 模块 96.92%；门槛 80%，见 `vitest.config.ts`）。
 - **归属**：新增业务表时逐表检查第 1.1 节，缺 `user_id` 且不属例外即阻断。
 
 ## 已知债务
@@ -284,8 +430,8 @@ pnpm --filter @xsu/db db:check
 - **`invites.code` 没有长度与字符集约束。** 生成逻辑在脚本里，靠脚本自律。若将来开放到别处生成，需要加约束。
 - **`user` 表没有 `deleted_at` / 软删除。** PRD 4.4 要求账号注销入口，实现时需决定是硬删还是软删，以及删除后 `invites.used_by` 等外键的处置（当前都是 `SET NULL`，会丢「码被谁用了」的信息）。
 - **`session` 表无过期行清理（M2 已解决）。** 原状：过期会话不会被自动删除，只在校验时不通过。M2 起由 worker 的 `maintenance.cleanup` 任务每天 UTC 04:00 删除（`deleteExpiredSessions`，实现见 `packages/platform/src/maintenance.ts`），手工回归步骤见 `docs/TESTING.md` 第 5 节。
-- **审计日志表尚未建。** 红线 8 要求的「只追加不更新」表结构未定，与后台管理（M3）一起设计。
+- **审计日志的「只追加」可以被同一套数据库凭据绕过。** 表已建（M3，见 3.12）：行级与语句级触发器拒绝 UPDATE / DELETE / TRUNCATE（已实测）。残余风险：同一凭据可以 `DISABLE TRIGGER` 或直接改表结构；真正不可篡改需要独立凭据或外部存储，见 `docs/spec/SPEC-community.md` 的已知债务。
 - **本文件的表结构描述是手工维护的。** 没有从 schema 自动生成表结构的工具链，改 schema 时容易忘记同步本文件——这是本文档最主要的风险。
 - **`tool_runs` 未分区、未归档。** 保留期（缺省 30 天）内的运行历史与收藏都在单表里，量级上来后按时间删除会变慢。M2 的规模下无所谓；等历史量真正成为瓶颈时再谈分区或归档，现在加是过度设计。
 
-- **没有任何受支持的途径创建第一个管理员。** `scripts/grant-admin.mjs` 在 M1 的计划内但没建（见 5.3），M1 的端到端只验了「非管理员被拒」这一侧，从未真的产出一个 `admin` 账号。M3 要落 `(admin)` 后台，开工前必须先补这个入口。这是一条**会阻塞下一个里程碑**的债务，不是可选项。
+ - **管理员入口欠账已补齐（M3，2026-10-04）。** 原 M1 债务：`scripts/grant-admin.mjs` 计划内但未建、M1 端到端只验了「非管理员被拒」一侧。现状：`scripts/grant-admin.ts` 已建并实跑验证三条路径（提权成功 / 用户不存在 exit 1 / 幂等跳过，见第 5.3 节）；e2e 的 `admin-seed.ts` 用内部适配器造管理员号，`/admin/reports` 后台已随 M3 落地，其余五个管理页与封禁 / 配置入口已随 M5 落地（见 [`spec/SPEC-admin.md`](spec/SPEC-admin.md)）。`create-invites.mjs` 是**仅剩的脚本欠账**——目前发码仍靠直接改库，随 M4 一并补。

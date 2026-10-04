@@ -56,7 +56,7 @@ export default async function ConsoleToolRunsPage() {
     return <AccessDenied denial={access.denial} />;
   }
 
-  const ports = createToolPorts({ userId: access.user.id });
+  const ports = await createToolPorts({ userId: access.user.id });
   const runs = await ports.listRuns({ limit: RUN_LIST_LIMIT });
 
   return (

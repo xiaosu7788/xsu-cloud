@@ -4,8 +4,8 @@
  * `docs/PRD.md` 3.5 验收 2 把它写成「不能一处 403 一处 404 一处 500」，`docs/ROADMAP.md` M1
  * 退出标准 3 是同一件事。这条用例分两半：
  *
- * - **未登录**：三个受保护路由一律 `307 → /sign-in`，而且三者的状态码与 `Location` 完全相同
- *   ——「统一」在这里是可断言的：三个不同的响应形状是缺陷，哪怕每个单看都说得通；
+ * - **未登录**：全部受保护路由一律 `307 → /sign-in`，而且每一条的状态码与 `Location` 完全相同
+ *   ——「统一」在这里是可断言的：不同的响应形状是缺陷，哪怕每个单看都说得通；
  * - **已登录但不是管理员**：`(admin)` 渲染 `AccessDenied`，正文里的状态码与错误码取自
  *   `@xsu/core` 的 `ACCESS_DENIED`（不是抄一份文案），而同一个账号访问 `(console)` 与首页正常。
  *
@@ -18,6 +18,15 @@
 import { expect, test } from '@playwright/test';
 import { ACCESS_DENIED } from '@xsu/core';
 
+import { ADMIN_REPORTS } from '@/features/community/routes';
+
+import {
+  ADMIN_AUDIT,
+  ADMIN_CONFIG,
+  ADMIN_CONTENT,
+  ADMIN_TASKS,
+  ADMIN_USERS,
+} from '@/features/admin/routes';
 import {
   ADMIN_HOME,
   CONSOLE_HOME,
@@ -32,12 +41,30 @@ import { NON_ADMIN_STORAGE } from './env';
  * 受保护分区的门牌号。匿名访问每一个都必须得到同一种响应。
  * 往 `(console)` / `(admin)` 里加页面时，把它们补进来。
  */
-const GUARDED_PATHS = [CONSOLE_HOME, CONSOLE_SETTINGS, ADMIN_HOME] as const;
+const GUARDED_PATHS = [
+  CONSOLE_HOME,
+  CONSOLE_SETTINGS,
+  ADMIN_HOME,
+  ADMIN_USERS,
+  ADMIN_CONTENT,
+  ADMIN_TASKS,
+  ADMIN_CONFIG,
+  ADMIN_AUDIT,
+  ADMIN_REPORTS,
+] as const;
 
 /**
- * `(admin)` 分区当前的页面。M5 才有第二页，那时把它加进来——这条用例按数组跑，加一行就多一条断言。
+ * `(admin)` 分区当前的页面。数组会按页面逐条断言统一拒绝视图。
  */
-const ADMIN_PATHS = [ADMIN_HOME] as const;
+const ADMIN_PATHS = [
+  ADMIN_HOME,
+  ADMIN_USERS,
+  ADMIN_CONTENT,
+  ADMIN_TASKS,
+  ADMIN_CONFIG,
+  ADMIN_AUDIT,
+  ADMIN_REPORTS,
+] as const;
 
 /** 拒绝视图上的对账信息：状态码与错误码都来自领域层那张表。 */
 const DENIAL_MARKER = `${ACCESS_DENIED.forbidden.status} ${ACCESS_DENIED.forbidden.code}`;
@@ -54,7 +81,7 @@ test.describe('匿名访问受保护路由', () => {
     });
   }
 
-  test('三条受保护路由收到的是同一种响应', async ({ request }) => {
+  test('所有受保护路由收到的是同一种响应', async ({ request }) => {
     const observed: { path: string; status: number; location: string | undefined }[] = [];
 
     for (const path of GUARDED_PATHS) {
@@ -68,8 +95,8 @@ test.describe('匿名访问受保护路由', () => {
     const statuses = new Set(observed.map((item) => item.status));
     const locations = new Set(observed.map((item) => item.location));
 
-    expect(statuses.size, `三条路由的状态码不一致，实际：${summary}`).toBe(1);
-    expect(locations.size, `三条路由的重定向目标不一致，实际：${summary}`).toBe(1);
+    expect(statuses.size, `受保护路由的状态码不一致，实际：${summary}`).toBe(1);
+    expect(locations.size, `受保护路由的重定向目标不一致，实际：${summary}`).toBe(1);
     /* 混进 403/404/500 正是这条验收标准点名要防的事。 */
     expect([...statuses], `匿名拒绝响应不是重定向，实际：${summary}`).toEqual([307]);
   });

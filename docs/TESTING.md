@@ -44,7 +44,7 @@ pnpm test           # Vitest + v8 覆盖率
 `coverage.thresholds`，理由也写在那里：数据层与平台层的判定逻辑都应落在领域层，用行覆盖率去卡
 `apps/web` 只会得到好看的数字。门槛一旦启用不再下调：不够就补测试，确有留白就在用例文件头写明哪一档是有意留白的。
 
-### 2.3 现有用例（2026-10-03 实测）
+### 2.3 现有用例（2026-10-05 M5 实测）
 
 | 文件 | 用例数 | 锁的是什么 |
 | --- | --- | --- |
@@ -54,21 +54,29 @@ pnpm test           # Vitest + v8 覆盖率
 | `packages/core/tests/invites.test.ts` | 14 | 邀请码可用性、脏数据 fail closed、归一化 |
 | `packages/core/tests/registration.test.ts` | 14 | 注册编排的判定顺序与失败分支 |
 | `packages/core/tests/tools.test.ts` | 39 | 工具箱领域层：输入校验、配额窗口、摘要截断与脱敏、跨用户访问拒绝、失败码 |
+| `packages/core/tests/community.test.ts` | 11 | 社区领域层：游标翻页不重不漏、并发点赞幂等且计数单增、软删除可见性、举报不自动下架与审核同事务审计、输入归一化校验、唯一约束竞态下的收敛 |
+| `packages/core/tests/admin.test.ts` | 21 | 后台管理领域层：访问门统一拒绝、用户管理（角色/封禁/解封/防自锁）、内容管理（帖评下架恢复/幂等不写审计）、站点配置三态校验与 upsert、任务与概览透传 |
 | `packages/platform/tests/env.test.ts` | 20 | 配置校验：必填、范围、缺省回退 |
 | `packages/platform/tests/mail.test.ts` | 3 | 控制台邮件传输的产出与生产环境拒绝 |
 | `packages/platform/tests/queue.test.ts` | 5 | `dispatchJob` 分派与失败计数（**刻意不连 Redis**，理由写在文件头） |
 
-**实测（2026-10-03）：`pnpm test` = 9 个文件 129 个用例全通过。**
+**实测（2026-10-05 M5）：`pnpm test` = 11 个文件 161 个用例全通过。**
 
-### 2.4 覆盖率现状（2026-10-03，`vitest run --coverage`）
+### 2.4 覆盖率现状（2026-10-05 M5，`vitest run --coverage`）
 
 | 范围 | 语句 | 分支 | 函数 | 行 |
 | --- | --- | --- | --- | --- |
-| `packages/core` 合计 | 99.48% | **98%** | 100% | 99.45% |
+| `packages/core` 合计（即覆盖率报告的 All files，报告只含 core 文件） | 99.03% | **97.96%** | 99.18% | 99.01% |
+| `packages/core/src/admin`（M5 新增） | 98.41% | 96.92% | 96.42% | 98.4% |
+| `packages/core/src/community` | 99.16% | 98.77% | 100% | 99.16% |
 | `packages/core/src/tools` | 99.21% | 96.42% | 100% | 99.16% |
 
-未覆盖的两处分支：`src/tools/registry.ts:32`（模块加载时抛「重复 slug」，代价是污染模块级注册表）与
-`src/tools/types.ts:62`。两个 `index.ts` 桶文件是 0%，它们是纯 re-export，没有可执行分支。
+未覆盖的分支按文件分四组：`src/community/reports.ts:49`（举报输入校验失败分支）与 `:161`
+（举报已被处理的失败分支）；`src/tools/registry.ts:32`（模块加载时抛「重复 slug」，代价是污染
+模块级注册表）与 `src/tools/types.ts:62`；M5 新增的 `src/admin/content.ts:158`（评论已在目标态时
+条件写未命中的幂等分支）与 `:177`（恢复评论时评论不存在）；`src/admin/rules.ts:139`（恒等辅助函数
+`adminAuditAction`）。四个 `index.ts` 桶文件（core 根、admin、community、tools）是 0%，
+它们是纯 re-export，没有可执行分支。
 
 ---
 
@@ -93,16 +101,20 @@ pnpm --filter @xsu/web test:e2e
 | --- | --- |
 | `e2e/auth.setup.ts` | 夹具：造账号并登录，结果落盘给两个 project 复用 |
 | `e2e/tools.setup.ts` | 夹具：造一条**他人**的运行记录（跨用户访问要有真实对手） |
+| `e2e/admin.setup.ts` | 夹具：确保真实 admin 账号存在（存在即复用，不删建——管理员是 `audit_logs` 的 actor）并经登录页取得真 cookie，供社区举报用例切换管理员视角 |
+| `e2e/admin-access.spec.ts` | 匿名访问 9 条受保护路由得到**同一种**响应、非管理员对 7 条后台路由渲染统一拒绝视图、同一账号访问控制台不被拒 |
+| `e2e/admin-m5.spec.ts` | M5 管理动作全链路：搜索/封禁/解封逐条留审计并防自锁、公开侧下架与恢复立即可见、站点配置三态保存与回显、任务页只读统计照常渲染 |
 | `e2e/public-pages.spec.ts` | 首页标题与入口、顶栏两套视口可用、360px 无横向滚动、移动端可点项 ≥44px、axe 无 serious/critical、主题切换落盘并保持 |
-| `e2e/static-render.spec.ts` | 公开页在构建期预渲染（含例外表）、控制台与后台一律不得预渲染、例外页在运行期按请求渲染 |
-| `e2e/admin-access.spec.ts` | 匿名访问三条受保护路由得到**同一种**响应、非管理员渲染统一拒绝视图、同一账号访问控制台不被拒 |
+| `e2e/static-render.spec.ts` | 公开页在构建期预渲染（含例外表与 `dynamicRoutes`：`/community/[id]`、`/community/tags/[tag]` 必须出现在 `prerender-manifest.json`）、控制台与后台一律不得预渲染、例外页在运行期按请求渲染 |
+| `e2e/community.spec.ts` | 社区全链路：发帖 → 评论 → 并发点赞（两上下文同时点，`reactions` 仅一行、计数为 1）→ 作者软删除后列表与搜索同时消失；举报不改内容可见性，管理员确认下架后内容消失且 `audit_logs` 多一行；360px 无横向滚动 |
 | `e2e/tools.spec.ts` | 未登录访问带参数页重定向、公开清单页不含执行入口、工具台写明配额、执行成功并能在历史里打开、坏输入得结构化错误并留失败历史、敏感工具历史无原文、他人的记录打不开且与不存在的 id 同视图、自己的历史不含他人记录、收藏与取消收藏 |
 
-**实测（2026-10-03，生产构建 + 真实库 + 真实会话，双视口）：56 个用例，50 通过 / 6 跳过 / 0 失败。**
+**实测（2026-10-05 M5，生产构建 + 真实库 + 真实会话，双视口）：93 个用例，87 通过 / 6 跳过 / 0 失败。**
 
-6 条跳过都是**按视口去重**，不是环境不具备：`static-render.spec.ts` 的 4 条与
-`tools.spec.ts` 的收藏用例只跑 desktop（它们改写共享状态或与视口无关），
-`public-pages.spec.ts` 的 44px 触控目标用例只跑 mobile（桌面按鼠标密度取 36px，见 `PRD.md` 4.1）。
+6 条跳过都是**按视口或设备能力去重**，不是环境不具备：`static-render.spec.ts` 的 4 条构建产物断言
+与 `tools.spec.ts` 的 1 条收藏用例（改写共享状态）只在 desktop 跑，mobile 侧跳过；`public-pages.spec.ts`
+的 44px 触控目标用例只在 mobile 跑（桌面按鼠标密度取 36px，见 `PRD.md` 4.1），desktop 侧跳过。
+M5 新增的 `admin-m5.spec.ts` 与扩容后的 `admin-access.spec.ts` 在两个视口都全跑，不产生跳过。
 
 ### 3.2 覆盖边界
 
@@ -222,12 +234,13 @@ from (select id from "user" limit 1) as u;
 
 - **用例数与覆盖率**：跑 `pnpm test`，把输出里的「Test Files / Tests」与覆盖率表和本文第 2.3、2.4 节对照；
   不一致即本文件过期，改本文件。
-- **端到端数字**：跑 `pnpm --filter @xsu/web test:e2e`，与第 3.1 节的 56 / 50 / 6 / 0 对照。
+- **端到端数字**：跑 `pnpm --filter @xsu/web test:e2e`，与第 3.1 节的 93 / 87 / 6 / 0 对照。
 - **手工回归步骤仍然可执行**：按第 5 节跑一遍，日志形态与实测描述一致。
 - **不复制事实**：本文件里任何一条验收条款都应在 `PRD.md` 找到出处，命令应在 `AGENTS.md` 第 7 节找到出处；
   发现本文成了第二份事实来源，就是缺陷。
-- **实测记录**：第 2.3 / 2.4 / 3.1 / 5.2 节的数字取自 2026-10-03 的三次实跑
-  （`pnpm test`、`pnpm --filter @xsu/web test:e2e`、真实 Redis 上的队列回归），原始输出留在 `Temp/out/`（不入库）。
+- **实测记录**：第 2.3 / 2.4 节的数字取自 2026-10-05 的 `pnpm test` 实跑、第 3.1 节取自同日
+  `pnpm --filter @xsu/web test:e2e` 实跑、第 5.2 节取自 2026-10-03 真实 Redis 上的队列回归，
+  原始输出留在 `Temp/out/`（不入库）。
 
 ## 已知债务
 

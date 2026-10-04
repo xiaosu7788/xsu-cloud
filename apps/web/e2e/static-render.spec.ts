@@ -30,6 +30,8 @@ import { expect, test, type TestInfo } from '@playwright/test';
 
 import { SIGN_IN_PATH, SIGN_UP_PATH, SITE_HOME } from '@/features/auth/routes';
 
+import { COMMUNITY_SEARCH } from '@/features/community/routes';
+
 import { NEXT_BUILD_DIR } from './env';
 
 /** 构建产物里「有哪些页面」：键是源码路径（`/(site)/sign-in/page`），值是路由（`/sign-in`）。 */
@@ -41,6 +43,11 @@ type AppPathRoutesManifest = Record<string, string>;
  */
 type PrerenderManifest = {
   routes: Record<string, { initialRevalidateSeconds: number | false } | undefined>;
+  /**
+   * ISR 动态路由（如 `/community/[id]`）不记在 `routes` 里，记在这里。键形如
+   * `/community/[id]`（构建清单写法，不带具体 id），运行期要用 routeRegex 或前缀匹配具体 URL。
+   */
+  dynamicRoutes: Record<string, { routeRegex: string } | undefined>;
 };
 
 /**
@@ -50,6 +57,7 @@ type PrerenderManifest = {
 const SITE_DYNAMIC_EXCEPTIONS: Readonly<Record<string, string>> = {
   [SIGN_IN_PATH]: '第三方提供方清单来自环境变量，OAuth 失败码必须出现在首屏 HTML（见该页文件头）。',
   [SIGN_UP_PATH]: '已登录的人不该看到注册表单，因此要读会话（见该页文件头）。',
+  [COMMUNITY_SEARCH]: '搜索词来自请求的 searchParams，空词与查询结果不能在构建期固化。',
 };
 
 /**
@@ -78,12 +86,10 @@ function readBuildArtifact<T>(fileName: string): T {
     );
   }
 }
-
-/** 已预渲染的路由集合。 */
+/** 已预渲染的路由集合：`routes` 是静态与 ISR 静态路由，`dynamicRoutes` 是 ISR 动态路由。 */
 function prerenderedRoutes(): Set<string> {
-  return new Set(
-    Object.keys(readBuildArtifact<PrerenderManifest>('prerender-manifest.json').routes),
-  );
+  const manifest = readBuildArtifact<PrerenderManifest>('prerender-manifest.json');
+  return new Set([...Object.keys(manifest.routes), ...Object.keys(manifest.dynamicRoutes ?? {})]);
 }
 
 /**

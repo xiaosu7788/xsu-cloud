@@ -49,7 +49,7 @@ export default async function ConsoleToolsPage() {
     return <AccessDenied denial={access.denial} />;
   }
 
-  const ports = createToolPorts({ userId: access.user.id });
+  const ports = await createToolPorts({ userId: access.user.id });
   const favoriteSlugs = await ports.listFavoriteSlugs();
   const tools = listTools();
   const favorites = favoriteSlugs.filter(isRegisteredToolSlug);

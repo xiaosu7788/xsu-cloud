@@ -15,6 +15,20 @@
       "when": 1790999550083,
       "tag": "0001_tools_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791033687570,
+      "tag": "0002_community_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791117203686,
+      "tag": "0003_admin_tables",
+      "breakpoints": true
     }
   ]
 }

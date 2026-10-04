@@ -2,8 +2,8 @@
 
 本文件是本仓库的强制约束，在本项目范围内优先于通用个人习惯。与 `~/.pi/agent/AGENTS.md` 冲突时以本文件为准；本文件未涉及的，按全局规则执行。
 
-> **当前阶段：M2 工具箱已落地；提交级检查链、生产构建、端到端回归（双视口）与 k6 容量实测均已实跑，`docs/ARCHITECTURE.md` 第 8 节的容量数字不再是 TBD。**
-> 已有：pnpm workspace 骨架与全部约定目录、`packages/config` 共享配置、分层铁律 ESLint（含故意的失败用例）、提交级检查链与 CI 工作流（提交级与 PR 级两个 job）、`docker/` 本地 Postgres + Redis（两个服务都已实际 `up`）；M1 落下数据层表与迁移、`packages/core` 四条横切规则、`packages/platform`（配置校验 / Better Auth 实例 / 注册编排）、`apps/web` 三个分区外壳与权限守卫、设计系统与双主题、三个响应式原语、PWA 四件套、邀请码注册入口，以及 `apps/web/e2e` 里的端到端回归；M2 又落下工具箱（工具目录在代码内的注册表、四支纯函数、运行历史与收藏）、`packages/platform` 的队列与过期清理、`apps/web/worker` 这个**独立 worker 进程**（BullMQ 首次落地）、`docs/TESTING.md`，以及 k6 实测后回填的容量与压测数字。**M1 与 M2 各三条退出标准现在都由可重跑的用例守住**：`pnpm test`（含 `packages/core` 分支覆盖率门槛 80%，实测 98%）与 `pnpm --filter @xsu/web test:e2e`（生产构建 + 真实库 + 双视口），CI 上每次提交都跑。仍未验证的是 OAuth 回调（本机无提供方凭证）、真实 SMTP 投递、邮箱验证链接的完整往返、PWA 更新提示在浏览器里的行为（端到端里 Service Worker 被刻意屏蔽，理由见 `apps/web/playwright.config.ts`），以及 **Redis 的 AOF 在「杀掉 Redis 后任务不丢」这一条上没有实测**（M6 的退出标准依赖它）。未验证清单见 `docs/ROADMAP.md` 第 5 节。开始任何实现之前，先读 `docs/ARCHITECTURE.md`（分层与边界）与 `docs/PRD.md`（范围与验收）。
+> **当前阶段：M5 后台管理已落地；提交级检查链、生产构建与端到端回归（双视口）均已实跑，四条退出标准由可重跑用例守住。**
+以及 k6 实测后回填的容量与压测数字；M3 再落下社区五表（`posts` / `comments` / `reactions` / `reports` / `audit_logs`，追加只读触发器是 drizzle-kit 表达不了的手写 SQL）、`packages/core/src/community` 领域层、`packages/platform` 的 `CommunityGateway` 与点赞计数缓存（Redis TTL 60 秒）、`(site)` 社区四页 + `(console)` 我的帖子 + `(admin)` 举报处置、点赞 / 批量计数 / 举报三个 API 路由、`docs/spec/SPEC-community.md`，`scripts/grant-admin.ts` 补上了首个管理员的提权入口。M5 再落下后台管理：`(admin)` 六页面（概览 / 用户 / 内容 / 任务 / 站点配置 / 审计）、`packages/core/src/admin` 领域层、`site_config` 单行表与配额覆盖入口（优先级 `site_config 覆盖 > env 默认 > core 常量`）、封禁即拒新会话（`session.create.before` 现查 + 封禁事务内删会话），成本看板随 M4 补。**M1、M2、M3 与 M5 的退出标准现在都由可重跑的用例守住**：`pnpm test`（11 个文件 161 个用例，含 `packages/core` 分支覆盖率门槛 80%，实测 97.96%）与 `pnpm --filter @xsu/web test:e2e`（93 个用例，87 通过 / 6 跳过 / 0 失败；生产构建 + 真实库 + 双视口），CI 上每次提交都跑。
 
 ---
 

@@ -26,7 +26,7 @@
  * 唯一入口，不能从清单里删。
  */
 import Link from 'next/link';
-import { Gauge, Settings, Wrench } from 'lucide-react';
+import { FileText, Gauge, Settings, Wrench } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { ResponsiveNav, type NavItem } from '@/components/responsive-nav';
@@ -35,6 +35,7 @@ import { AccessDenied } from '@/features/auth/access-denied';
 import { AccountPanel } from '@/features/auth/account-panel';
 import { redirectToSignInIfUnauthenticated } from '@/features/auth/guard';
 import { CONSOLE_HOME, CONSOLE_SETTINGS, SITE_HOME } from '@/features/auth/routes';
+import { CONSOLE_COMMUNITY } from '@/features/community/routes';
 import { readConsoleAccess } from '@/features/auth/session';
 import { CONSOLE_TOOLS } from '@/features/tools/routes';
 
@@ -42,7 +43,7 @@ import { CONSOLE_TOOLS } from '@/features/tools/routes';
  * 控制台入口。
  *
  * 每一项都必须真的有一个页面——这条约束靠人工 review，见 `features/auth/routes.ts` 文件头。
- * 目前三项：`/console` 与 `/console/settings` 是 M1 的，工具箱是 M2 的。中转站入口与
+ * `console` / `settings` 是 M1 的，工具箱是 M2 的，「我的帖子」是 M3 的。中转站入口与
  * 「我的任务」排在 M4 / M6，落地时加在这里——在导航里写一个还没有页面的路径，用户点进去
  * 只会看到 404。
  */
@@ -58,6 +59,11 @@ const CONSOLE_NAV_ITEMS: readonly NavItem[] = [
     href: CONSOLE_TOOLS,
     label: '工具箱',
     icon: <Wrench aria-hidden className="size-5" />,
+  },
+  {
+    href: CONSOLE_COMMUNITY,
+    label: '我的帖子',
+    icon: <FileText aria-hidden className="size-5" />,
   },
   {
     href: CONSOLE_SETTINGS,

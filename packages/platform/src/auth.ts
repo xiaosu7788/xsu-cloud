@@ -42,6 +42,15 @@
  * 生效」：角色每次从数据库读，改完下一个请求就生效；一旦把会话缓存进 cookie，
  * 被降权的用户在缓存过期前仍是管理员。想开之前先解决这一条。
  *
+ * ## 封禁拦截（M5）
+ *
+ * `session.create.before` 在**每次会话创建时现查** `user.banned_at`：非空即返回 `false`
+ * 阻断建会话。判定用刚要落库的 `session.userId`（「谁正在登录」），不依赖请求上下文，
+ * 邮箱密码与 OAuth 两条登录路都走这一个钩子。现查列而不是查缓存，是 `docs/PRD.md`
+ * 「角色变更立即生效」的同一动机：封禁事务已经删掉了该用户的全部 session 行，存量会话
+ * 随之失效；这个钩子堵住的是「封禁后再次登录」这条路。三个环节一起构成封禁的完整闭环，
+ * 少任何一个：存量会话漏删、或被封禁者重登成功。
+ *
  * ## 邮件
  *
  * 邮件走 `MailTransport` 端口，不在这里调 SMTP。**M2 起这个端口是入队的**（`./queue` 的
@@ -60,9 +69,10 @@ import { betterAuth } from 'better-auth';
 import type { BetterAuthOptions, BetterAuthPlugin } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { genericOAuth } from 'better-auth/plugins';
+import { eq } from 'drizzle-orm';
 
 import { PASSWORD_MIN_LENGTH } from '@xsu/core';
-import { DEFAULT_ROLE, getDb, schema, type Database } from '@xsu/db';
+import { DEFAULT_ROLE, getDb, schema, user, type Database } from '@xsu/db';
 
 import { getServerEnv, type OAuthProviderId, type ServerEnv } from './env';
 import type { MailTransport } from './mail';
@@ -142,6 +152,33 @@ function buildPlugins(env: ServerEnv): BetterAuthPlugin[] {
       ],
     }),
   ];
+}
+
+/**
+ * 封禁拦截（M5）：会话创建前现查 `user.banned_at`，非空返回 `false` 阻断建会话。
+ *
+ * 挂在 `session.create.before` 而不是登录端点，是为了同时关住「邮箱密码登录」与
+ * 「OAuth 登录」两条路——所有建会话动作都要过这个钩子。现查列而不是查缓存：
+ * 封禁事务（`@xsu/db` 的 `banUser`）已删掉该用户全部 session 行，存量会话随之失效；
+ * 这里堵住的是「封禁后再次登录」。返回 `false` 即拒绝本次数据库写
+ * （`@better-auth/core` 的 `databaseHooks.session.create.before`，
+ * `dist/types/init-options.d.mts` 第 1318 行）。
+ */
+function buildBanSessionHook(
+  db: Database,
+): NonNullable<NonNullable<BetterAuthOptions['databaseHooks']>['session']> {
+  return {
+    create: {
+      before: async ({ userId }: { userId: string }) => {
+        const rows = await db
+          .select({ bannedAt: user.bannedAt })
+          .from(user)
+          .where(eq(user.id, userId))
+          .limit(1);
+        return rows[0]?.bannedAt != null ? false : undefined;
+      },
+    },
+  };
 }
 
 /**
@@ -232,6 +269,7 @@ export function createAuth(deps: AuthDeps) {
     },
     socialProviders: buildSocialProviders(env),
     plugins: buildPlugins(env),
+    databaseHooks: { session: buildBanSessionHook(db) },
     disabledPaths: [...DISABLED_PATHS],
   });
 }
