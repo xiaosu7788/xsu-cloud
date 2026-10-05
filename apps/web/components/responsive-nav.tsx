@@ -147,9 +147,25 @@ export function ResponsiveNav({
         {footer ? <div className="border-t border-border p-3">{footer}</div> : null}
       </aside>
 
+      {/*
+       * 内容区宽度**必须有上限**。
+       *
+       * 原来这里是裸的 `min-w-0 flex-1`：侧边栏吃掉 240px 后，剩下的全给内容。1920px
+       * 屏上内容列实测 1680px —— 表单输入框、表格一路拉到屏幕最右边，读一行要横跨整个
+       * 显示器，这正是「界面松、不紧凑」的观感来源。
+       *
+       * `max-w-6xl`（1152px）+ 居中，与参考实现的 `dashboard-layout.tsx` 一致（它的
+       * `<main>` 同样是 `mx-auto w-full max-w-6xl px-4 py-8 lg:px-8`），也与本项目的
+       * `(site)` 外壳对齐——两个分区的正文宽度从此是同一个数。
+       *
+       * `px-4 py-8 lg:px-8` 原来由 `(console)` / `(admin)` 各页自己写，现在归外壳统一
+       * 提供，页面只管内容。
+       */}
       <div className="min-w-0 flex-1 pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pb-0">
-        {/* 内容区入场动画：外壳（侧边栏 / 底部 Tab）留在外面，不跟着闪。 */}
-        <PageEnter>{children}</PageEnter>
+        <div className="mx-auto w-full max-w-6xl px-4 py-8 lg:px-8">
+          {/* 内容区入场动画：外壳（侧边栏 / 底部 Tab）留在外面，不跟着闪。 */}
+          <PageEnter>{children}</PageEnter>
+        </div>
       </div>
 
       {/*

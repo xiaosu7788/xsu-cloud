@@ -128,10 +128,14 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
       footer={<AccountPanel name={access.user.name} email={access.user.email} />}
     >
       {/*
-       * 内容宽度与内边距放在布局里：控制台的每个页面都要一致，散到各页面就会出现
-       * 「有的页贴左边、有的页居中」。`max-w-4xl` 比公开页窄，工作台类界面不需要长行。
+       * 宽度与内边距由 `ResponsiveNav` 的内容区统一提供（`max-w-6xl px-4 py-8 lg:px-8`）。
+       *
+       * 这里原来自己写了 `max-w-4xl`，与公开页的 6xl、后台的 5xl 三者互不相同，
+       * 桌面端换页时正文左右边缘会跳。`max-w-4xl` 的初衷是「工作台不需要长行」，
+       * 但需要窄行的是**具体的表单页**，不是整个分区——工具运行页与帖子列表反而嫌窄。
+       * 现在分区统一到 6xl，个别页面要窄就自己再收一层。
        */}
-      <div className="mx-auto w-full max-w-4xl px-4 py-6">{children}</div>
+      <div className="w-full">{children}</div>
     </ResponsiveNav>
   );
 }

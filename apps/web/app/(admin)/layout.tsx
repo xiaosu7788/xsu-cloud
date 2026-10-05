@@ -125,7 +125,14 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       }
       footer={<AccountPanel name={access.user.name} email={access.user.email} />}
     >
-      <div className="mx-auto w-full max-w-5xl px-4 py-6">{children}</div>
+      {/*
+       * 宽度与内边距**一律由 `ResponsiveNav` 的内容区提供**（`max-w-6xl px-4 py-8 lg:px-8`）。
+       *
+       * 这里原来自己写了 `max-w-5xl px-4 py-6`，于是全站出现三个不同的正文宽度：
+       * `(site)` 是 6xl、后台是 5xl、控制台没有上限（1920px 屏上内容列 1680px）。
+       * 三个分区并排看就是「没对齐」。现在统一成一个数，页面只管内容。
+       */}
+      <div className="w-full">{children}</div>
     </ResponsiveNav>
   );
 }
