@@ -21,22 +21,31 @@ import { TOUCH_TARGET_MIN } from './env';
 /** 公开分区里当前存在的两页。多一个都要先有页面才写进来（见 `features/auth/routes.ts` 文件头）。 */
 const PUBLIC_PATHS = [SITE_HOME, SIGN_IN_PATH] as const;
 
-test('首页渲染出标题与两个入口', async ({ page }) => {
+test('首页渲染出标题与三个能力入口', async ({ page }) => {
   await page.goto(SITE_HOME);
 
   /*
-   * 两个入口限定在 `main` 里找。
+   * 入口限定在 `main` 里找。
    *
    * 未登录时顶栏（`banner`）里还有一个同名的「登录」入口（`SessionBadge`），直接
    * `page.getByRole('link', { name: '登录' })` 会匹配到两个元素，Playwright 的严格模式
-   * 会直接报错而不是挑一个。这里要验的是首页正文有没有把两个入口渲染出来，所以判据
+   * 会直接报错而不是挑一个。这里要验的是首页正文有没有把入口渲染出来，所以判据
    * 从 `main` 出发；顶栏那一个是 `SessionBadge` 的事，不属于这条用例。
+   *
+   * 落地页改版后正文入口从「登录 / 我的控制台 / 工具箱」三个按钮换成 hero 的一对 CTA
+   * 加三张能力卡片。断言跟着换成新入口——但**每一条都指向真的存在的页面**，
+   * 这与首页「只列已发货能力」的约束是同一件事：断言里出现的路径必须有页面。
    */
   const main = page.getByRole('main');
 
   await expect(page.getByRole('heading', { level: 1, name: 'xsu-cloud' })).toBeVisible();
   await expect(main.getByRole('link', { name: '登录' })).toBeVisible();
-  await expect(main.getByRole('link', { name: '我的控制台' })).toBeVisible();
+  await expect(main.getByRole('link', { name: '注册' })).toBeVisible();
+
+  /* 三张能力卡片的入口。`进入控制台` 需要登录，但链接本身对匿名用户也渲染。 */
+  await expect(main.getByRole('link', { name: '进入控制台' })).toBeVisible();
+  await expect(main.getByRole('link', { name: '打开工具箱' })).toBeVisible();
+  await expect(main.getByRole('link', { name: '浏览社区' })).toBeVisible();
 });
 
 test('公开页顶栏在两套视口下都可用', async ({ page, isMobile }) => {

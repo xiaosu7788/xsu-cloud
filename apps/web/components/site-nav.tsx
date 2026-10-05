@@ -74,11 +74,12 @@ export function SiteNav({ items, actions, label, className }: SiteNavProps) {
         )}
       >
         {/*
-         * `max-w-5xl` + `px-4`：内容宽与 `(site)` 布局的 `<main>` 对齐，否则顶栏的链接与
-         * 正文会左右错开几像素。
+         * 宽度与 `(site)` 布局的 `<main>`、页脚一致（`max-w-6xl` + `lg:px-8`），否则三者的
+         * 左右边缘会错开。
          * `gap-2` 而不是 `gap-4`：360px 下品牌 + 两个操作项已经很挤，间距从这里省。
          */}
-        <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-4">
+        {/* 宽度与 `(site)` 布局的 `<main>` / 页脚对齐，三者左右边缘不能错开。 */}
+        <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-2 px-4 lg:px-8">
           {/*
            * `h-11` 而不是让文字自己撑高：文字本身只有 20px 高，命中区比 `docs/PRD.md` 4.1
            * 要求的 44px 少了一半以上，360px 实测命中区只有 66x20。顶栏行高是 `h-14`，

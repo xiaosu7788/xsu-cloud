@@ -17,6 +17,12 @@
  * `SiteNav` 收的是「一个分区自己的入口清单」，它属于布局的装配，
  * 不属于任何业务模块。放进 `features/` 会让一个还没建立的模块先有一套目录。
  * 等社区、工具箱落地时，各自的入口由各自模块导出，这里只做拼装。
+ *
+ * ## 宽度 6xl + 页脚（对齐参考实现）
+ *
+ * 参考实现的公开站点用 `max-w-6xl` + `lg:px-8`，本站原来写 `max-w-5xl` + `px-4`。
+ * 6xl 让落地页的功能网格能在宽屏排成三列（`lg:grid-cols-3`），5xl 只能排两列，
+ * 观感明显偏挤。**顶栏与页脚必须与 `<main>` 用同一个宽度**，否则三者的左右边缘会错开。
  */
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
@@ -70,20 +76,36 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
       />
 
       {/*
-       * `flex-1` 让内容不足一屏时也能把页面撑满，避免深色下页脚下露出一条异色。
-       * 宽度与顶栏一致（`max-w-5xl` + `px-4`），否则两者的左右边缘会错开。
+       * `flex-1` 让内容不足一屏时也能把页面撑满，避免深色下页脚后露出一条异色。
+       * 宽度与顶栏、页脚一致（`max-w-6xl` + `lg:px-8`），否则三者的左右边缘会错开。
        *
        * 移动端 `pb-[calc(3.5rem+env(safe-area-inset-bottom))]`：给 `SiteNav` 的底部 Tab
        * 让位（`h-14` = 3.5rem），与 `ResponsiveNav` 内容区的写法一致——安全区由 Tab 栏自己
-       * 吃掉，内容区只让出 Tab 栏高度本身。`md:pb-0`：桌面端没有 Tab，恢复原 `py-8`。
+       * 吃掉，内容区只让出 Tab 栏高度本身。`md:pb-0`：桌面端没有 Tab，恢复常规留白。
        *
        * 内容外面套 `PageEnter`（客户端组件）：切页时页面区块依次淡入，而顶栏与底部 Tab 在它
        * 外面、不参与。它取 `usePathname()` 而不是 `useSearchParams()` —— 后者会要求 Suspense
        * 边界，并让本分区失去静态预渲染，直接违反本文件开头那条红线。
        */}
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:px-8 md:pb-0">
         <PageEnter>{children}</PageEnter>
       </main>
+
+      {/*
+       * 页脚（对齐参考实现）。公开分区原来没有页脚，页面底部是一条裸露的留白。
+       *
+       * `border-t` 而不是玻璃面板：页脚是「页面的结束」，不是一层浮在内容上的载体，
+       * 用它自己的分割线表达边界就够了——参考实现同样只给 `border-t`。
+       *
+       * 移动端底部的 `pb-[calc(3.5rem+env(safe-area-inset-bottom))]` 与 `<main>` 同一理由：
+       * 给底部 Tab 让位，否则页脚文字会被 Tab 栏压住滚不出来。桌面端 `md:pb-8` 恢复常规留白。
+       */}
+      <footer className="border-t border-border">
+        <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 px-4 pb-[calc(3.5rem+env(safe-area-inset-bottom))] pt-8 text-sm text-muted-foreground sm:flex-row md:pb-8 lg:px-8">
+          <p className="font-semibold tracking-tight text-foreground">xsu-cloud</p>
+          <p>个人云站 · 数据都在自己的机器上</p>
+        </div>
+      </footer>
     </div>
   );
 }
