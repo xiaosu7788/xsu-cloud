@@ -2,8 +2,8 @@
 
 本文件是本仓库的强制约束，在本项目范围内优先于通用个人习惯。与 `~/.pi/agent/AGENTS.md` 冲突时以本文件为准；本文件未涉及的，按全局规则执行。
 
-> **当前阶段：M5 后台管理已落地；提交级检查链、生产构建与端到端回归（双视口）均已实跑，四条退出标准由可重跑用例守住。**
-以及 k6 实测后回填的容量与压测数字；M3 再落下社区五表（`posts` / `comments` / `reactions` / `reports` / `audit_logs`，追加只读触发器是 drizzle-kit 表达不了的手写 SQL）、`packages/core/src/community` 领域层、`packages/platform` 的 `CommunityGateway` 与点赞计数缓存（Redis TTL 60 秒）、`(site)` 社区四页 + `(console)` 我的帖子 + `(admin)` 举报处置、点赞 / 批量计数 / 举报三个 API 路由、`docs/spec/SPEC-community.md`，`scripts/grant-admin.ts` 补上了首个管理员的提权入口。M5 再落下后台管理：`(admin)` 六页面（概览 / 用户 / 内容 / 任务 / 站点配置 / 审计）、`packages/core/src/admin` 领域层、`site_config` 单行表与配额覆盖入口（优先级 `site_config 覆盖 > env 默认 > core 常量`）、封禁即拒新会话（`session.create.before` 现查 + 封禁事务内删会话），成本看板随 M4 补。**M1、M2、M3 与 M5 的退出标准现在都由可重跑的用例守住**：`pnpm test`（11 个文件 161 个用例，含 `packages/core` 分支覆盖率门槛 80%，实测 97.96%）与 `pnpm --filter @xsu/web test:e2e`（93 个用例，87 通过 / 6 跳过 / 0 失败；生产构建 + 真实库 + 双视口），CI 上每次提交都跑。
+> **当前阶段：M5 后台管理已落地，设计系统已按参考实现对齐（含首页落地页）；纯站内社交功能批的数据层与领域层已落盘，页面层尚未开工。**
+M1 落盘鉴权与设计系统基线、M2 落盘工具箱与 worker 基础设施，以及 k6 实测后回填的容量与压测数字；M3 再落下社区五表（`posts` / `comments` / `reactions` / `reports` / `audit_logs`，追加只读触发器是 drizzle-kit 表达不了的手写 SQL）、`packages/core/src/community` 领域层、`packages/platform` 的 `CommunityGateway` 与点赞计数缓存（Redis TTL 60 秒）、`(site)` 社区四页 + `(console)` 我的帖子 + `(admin)` 举报处置、点赞 / 批量计数 / 举报三个 API 路由、`docs/spec/SPEC-community.md`，`scripts/grant-admin.ts` 补上了首个管理员的提权入口。M5 再落下后台管理：`(admin)` 六页面（概览 / 用户 / 内容 / 任务 / 站点配置 / 审计）、`packages/core/src/admin` 领域层、`site_config` 单行表与配额覆盖入口（优先级 `site_config 覆盖 > env 默认 > core 常量`）、封禁即拒新会话（`session.create.before` 现查 + 封禁事务内删会话），成本看板随 M4 补。设计系统随后按参考实现全量对齐（token、玻璃层次、动效与 7 个共享组件，见 `docs/DESIGN.md`）；站内社交批落下九张表（迁移 `0004`，见 `docs/DATA-MODEL.md` 3.14–3.22）与 `packages/core/src/social` 领域层，**页面层尚未开工**（见 `docs/ROADMAP.md`「纯站内社交功能批」）。**M1、M2、M3 与 M5 的退出标准现在都由可重跑的用例守住**：`pnpm test`（12 个文件 235 个用例，含 `packages/core` 分支覆盖率门槛 80%，实测 98%）与 `pnpm --filter @xsu/web test:e2e`（93 个用例，87 通过 / 6 跳过 / 0 失败；生产构建 + 真实库 + 双视口），CI 上每次提交都跑。
 
 ---
 

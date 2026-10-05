@@ -6,8 +6,44 @@
 
 ---
  
- ---
- 
+## 站内社交批：数据层 + 领域层（2026-10-05，M5 之后）
+
+**状态**：九张表与领域层已落盘并实跑验证；**页面层、Server Action、API 路由与端到端用例尚未开工**，因此 [`PRD.md`](PRD.md) 3.7 的六条验收标准只有单测一侧的证据。范围与逐条设计理由见 [`spec/SPEC-social.md`](spec/SPEC-social.md)，进度与「未做的部分」见 [`ROADMAP.md`](ROADMAP.md)「纯站内社交功能批」，逐表字段见 [`DATA-MODEL.md`](DATA-MODEL.md) 3.14–3.22。
+
+### 新增
+
+- **数据层** `packages/db`：`schema/social.ts` 九张表（`notifications` / `direct_messages` / `dm_contacts` / `user_spaces` / `user_stats` / `user_points` / `point_transactions` / `daily_checkins` / `user_achievements`）与迁移 `0004_past_black_bird.sql`。幂等落在两条**部分唯一索引**上（`notifications_dedup_unique_idx`、`point_transactions_dedup_unique_idx`，谓词 `WHERE dedup_key IS NOT NULL`），签到落在复合主键 `(user_id, checkin_date)` 上 —— 两处都**不靠「先查后插」**。迁移已在本机实跑生效：库内 22 张表、2 条部分唯一索引，`pnpm --filter @xsu/db db:check` 无 drift。
+- **领域层** `packages/core/src/social/`：`rules.ts`（纯函数与常量）、`notifications`、`points`、`checkins`、`messages`、`space`、`achievements`、`types`、`index`（统一导出 + `SocialPorts`）。依赖方向 `types → rules → {notifications, points} → {checkins, messages} → {space, achievements}`；时间点一律由端口传入，**领域层不读系统时钟**。
+- **文档** [`spec/SPEC-social.md`](spec/SPEC-social.md) 建立（B 级，可执行规格）；[`DATA-MODEL.md`](DATA-MODEL.md) 新增 3.14–3.22；[`ARCHITECTURE.md`](ARCHITECTURE.md) 第 5 节补 `social` 域；[`PRD.md`](PRD.md) 3.7 与 [`ROADMAP.md`](ROADMAP.md) 各补一节；[`TESTING.md`](TESTING.md) 回填用例数与覆盖率。
+
+### 已知债务
+
+- **页面层未开工**，见上文「状态」；此时不得出现「社交功能已完成」这类表述。
+- 设计取舍的代价集中登记在 [`spec/SPEC-social.md`](spec/SPEC-social.md) 第 6 节与 [`DATA-MODEL.md`](DATA-MODEL.md) 已知债务（`user_achievements.achievement_id` 无外键会留孤儿行；`point_transactions.balance` 快照在并发下可能与余额差一笔）。
+
+---
+
+## 设计对齐续：首页落地页与正文宽度统一（2026-10-05，M5 之后）
+
+**状态**：两处改动均已落盘并实跑回归，补在「设计系统基线对齐」之后，属同一批次的收尾。基线口径与已知债务见 [`DESIGN.md`](DESIGN.md)。
+
+### 行为变化
+
+- **首页改为落地页**（`5c92d91`）：`(site)/page.tsx` 重写为「hero → 能力网格 → 上手三步 → 排期中」四段。版式取自参考实现的 `landing.tsx`，**内容全部替换为本站已发货的事实** —— 参考实现的文案里有排行榜、积分、商店、签到、捐赠、客户端下载等本站没有的功能，照抄等于对用户谎报产品现状。顺手修掉一处真实错误：原「尚未开放的模块」清单把已落地的社区与工具箱列为未开放。首页仍是纯服务端组件、不读会话，静态预渲染不变。
+- **外壳加宽并补页脚**（`5c92d91`）：`(site)` 布局与顶栏由 `max-w-5xl + px-4` 改为 `max-w-6xl + lg:px-8`（6xl 才能让宽屏排成三列），新增 `border-t` 页脚并与参考实现一致。
+- **三个分区的正文宽度统一**（`96979c9`）：此前公开页 `max-w-6xl` / 后台 `max-w-5xl` / 控制台 `max-w-4xl` 三套宽度，而 `ResponsiveNav` 的内容列**根本没有上限** —— 1920px 屏上实测内容列 1680px，表单与表格一路拉到屏幕最右。现由外壳统一提供 `mx-auto w-full max-w-6xl px-4 py-8 lg:px-8`，页面只管内容；实测九个页面内容列全部 1152px。
+
+### 修复
+
+- **注释被渲染成正文**（`96979c9`）：`(console)` / `(admin)` 布局里的说明写成了 JSX children 位置的裸 `/* */`，会被原样渲染进页面正文。改为 `{/* */}`，运行时实测正文里不再出现注释文本。
+
+### 已知债务
+
+- **参考实现的功能清单不能当成本站的功能清单。** 落地页的「排期中」段只写尚未落地的模块（M4 / M6），每落地一个都要回头改这里，否则首页会再次变成过期承诺 —— 这正是原首页犯过的错。
+- 页脚目前只有文档入口，没有参考实现里的社交链接与备案信息：本站还没有这些事实可写。
+
+---
+
 ## 设计系统基线对齐 DoulorCloud（2026-10-05，M5 之后）
 
 **状态**：外壳层与页面层全部落盘；提交级检查链、生产构建与端到端回归（双视口）均已实跑。基线口径、三处刻意偏离的对比度实算与已知债务见 [`DESIGN.md`](DESIGN.md)。

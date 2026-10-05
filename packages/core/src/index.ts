@@ -14,3 +14,4 @@ export * from './registration';
 export * from './tools';
 export * from './community';
 export * from './admin';
+export * from './social';

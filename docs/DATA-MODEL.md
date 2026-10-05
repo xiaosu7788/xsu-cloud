@@ -50,6 +50,15 @@
 | [`reports`](#311-reports) | `reporter_id` / `handled_by` | M3 | 已建（迁移 `0002`） |
  | [`audit_logs`](#312-audit_logs) | `actor_id`（见 3.12 第 3 条） | M3 | 已建（迁移 `0002`） |
  | [`site_config`](#313-site_config) | 站点配置本体（见 3.13 第 3 条） | M5 | 已建（迁移 `0003`） |
+| [`notifications`](#314-notifications) | `recipient_id` / `actor_id` | 社交批 | 已建（迁移 `0004`） |
+| [`direct_messages`](#315-direct_messages) | `from_user_id` / `to_user_id` | 社交批 | 已建（迁移 `0004`） |
+| [`dm_contacts`](#316-dm_contacts) | `owner_id` / `peer_id` | 社交批 | 已建（迁移 `0004`） |
+| [`user_spaces`](#317-user_spaces) | `user_id` | 社交批 | 已建（迁移 `0004`） |
+| [`user_stats`](#318-user_stats) | `user_id` | 社交批 | 已建（迁移 `0004`） |
+| [`user_points`](#319-user_points) | `user_id` | 社交批 | 已建（迁移 `0004`） |
+| [`point_transactions`](#320-point_transactions) | `user_id` | 社交批 | 已建（迁移 `0004`） |
+| [`daily_checkins`](#321-daily_checkins) | `user_id` | 社交批 | 已建（迁移 `0004`） |
+| [`user_achievements`](#322-user_achievements) | `user_id`（见 3.22 第 3 条） | 社交批 | 已建（迁移 `0004`） |
 ---
 
 ## 3. 逐表说明
@@ -346,6 +355,168 @@
  1. **单行由 CHECK 约束保证。** `site_config_id_check` 让第二行插不进去；领域层 upsert 走 `ON CONFLICT (id) DO UPDATE`（动作 `site.config.update`），读侧 `resolveQuotaOverrides`（`packages/platform/src/quota.ts`）在网关装配点现读这一行，优先级 `site_config` 覆盖 > env 默认 > core 常量。
  2. **`null` = 不覆盖，`0` = 关闭，两者语义必须分开。** null 回落到 env 默认，0 是管理员显式关闭该动作——把 null 当 0 处理等于悄悄关站，这是覆盖列必须 nullable 而不是 default 0 的原因。`updated_by` 用 SET NULL：管理员删号后配置事实仍在，只是没了改动者档案（同 3.11 `handled_by` 的取舍）。
  3. **为什么它没有 `user_id` 却不算违反红线 6（1.1 节）**：它是站点配置本体，不含用户数据；「谁在何时把什么改成什么」由 `audit_logs`（action `site.config.update`，target_type `site_config`）回答，配置变更与审计行同事务落盘。
+
+### 3.14 `notifications`
+
+定义：`packages/db/src/schema/social.ts`。站内消息箱（社交批第 1 项）。范围与领域规则见 [`spec/SPEC-social.md`](spec/SPEC-social.md) 3.1 与 4.2。
+
+| 列 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | text | PK | 由应用层生成 |
+| `recipient_id` | text | not null, FK → `user.id` ON DELETE **CASCADE** | 收件人；账号删除后通知无意义 |
+| `category` | text | not null, CHECK `in ('system','site','social')` | 三档粗分类，决定消息箱的 tab |
+| `type` | text | not null，**无 CHECK** | 细粒度动作标识（`post_comment` / `dm_message`…），取值持续增加，见下第 2 条 |
+| `actor_id` | text | nullable, FK → `user.id` ON DELETE **SET NULL** | 触发者；系统通知为 null |
+| `post_id` / `comment_id` | text | nullable, FK → `posts.id` / `comments.id` ON DELETE **CASCADE** | 社交类通知的跳转目标 |
+| `link` | text | nullable | 站内路径，页面不必再拼 URL |
+| `title` / `body` | text | nullable | 展示文案 |
+| `dedup_key` | text | nullable | 幂等键（`post_like:<postId>:<actorId>`）；null = 不去重 |
+| `read` | boolean | not null, default `false` | 已读位 |
+| `created_at` | timestamptz | not null, default `now()` | — |
+
+索引：`notifications_recipient_idx (recipient_id, read, created_at)`（未读角标 + 列表排序）、`notifications_recipient_category_idx (recipient_id, category, created_at)`（按分类筛选）、`notifications_dedup_unique_idx` **部分**唯一 `(recipient_id, dedup_key) WHERE dedup_key is not null`（幂等去重；部分索引把不去重的行排除，广播类可有任意多条）。
+
+两条必须一起看的规则：
+
+1. **幂等由唯一索引保证，不靠「先查再插」。** 并发下先查再插会重复；仓储把唯一冲突翻译成幂等结果（`ON CONFLICT DO NOTHING`）。谓词必须与查询写法一致，否则规划器用不上这条索引。
+2. **`category` 与 `type` 是两层，别合并。** `category` 决定「在哪一栏看」，`type` 决定「用什么图标与文案」。`type` 不加 CHECK 的理由同 3.12 的 `action`：它只会越来越多，唯一来源是领域层常量。
+
+### 3.15 `direct_messages`
+
+定义：`packages/db/src/schema/social.ts`。一对一私信（社交批第 2 项）。
+
+| 列 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | text | PK | 由应用层生成 |
+| `from_user_id` / `to_user_id` | text | not null, FK → `user.id` ON DELETE CASCADE | 发件人 / 收件人 |
+| `body` | text | not null | 正文；长度上限在领域层（`validateMessageInput`） |
+| `created_at` | timestamptz | not null, default `now()` | — |
+| `read_at` | timestamptz | nullable | 收件人读这条的时间；null = 未读 |
+
+索引：`direct_messages_from_to_idx (from_user_id, to_user_id, created_at)`、`direct_messages_to_from_idx (to_user_id, from_user_id, created_at)`（会话翻页两个方向各一条）、`direct_messages_unread_idx (to_user_id, read_at, created_at)`（未读数与会话列表）。
+
+**已读只有一个 `read_at`，不建位点表。** 一对一场景一条消息只需要一个「收件人读了吗」，未读数 = `to_user_id = 我 AND read_at is null`。这是有意的收敛，加位点表只会多一处可能与事实不符的状态。
+
+### 3.16 `dm_contacts`
+
+定义：`packages/db/src/schema/social.ts`。私信关系（防骚扰的「先申请」门槛，社交批第 2 项）。
+
+| 列 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `owner_id` | text | not null, FK → `user.id` ON DELETE CASCADE | **收到**申请的人 |
+| `peer_id` | text | not null, FK → `user.id` ON DELETE CASCADE | **发起**申请的人 |
+| `status` | text | not null, CHECK `in ('request','accepted','declined')` | 三态，见下第 1 条 |
+| `created_at` / `updated_at` | timestamptz | not null, default `now()` | — |
+
+主键 `dm_contacts_pk (owner_id, peer_id)`；索引 `dm_contacts_owner_status_idx (owner_id, status)`（我收到的待处理申请）、`dm_contacts_peer_idx (peer_id, status)`（反查是否已有关系）。
+
+两条必须一起看的规则：
+
+1. **方向是有意的**：`owner_id` = 收件人、`peer_id` = 发起者。三态语义为 `request`（等待 `owner` 处理，`peer` 不能再发）、`accepted`（自由互发）、`declined`（`peer` 不能再发）。
+2. **主键即并发防线。** 「一对人只有一条关系」由主键保证：并发发首条消息时，第二个请求会撞主键并被翻译成「等待对方同意」，不依赖先查后写。**三种免申请情形不落这张表**（收件人是管理员 / 收件人是自己 / 已有 `accepted`），在领域层判断。
+
+### 3.17 `user_spaces`
+
+定义：`packages/db/src/schema/social.ts`。个人空间的**展示设置**（社交批第 3 项）。
+
+| 列 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `user_id` | text | PK, FK → `user.id` ON DELETE CASCADE | 归属；一人一行 |
+| `show_stats` / `show_posts` / `show_achievements` | boolean | not null, default `true` | 三个分区开关 |
+| `motto` | text | nullable | 一句话签名；null / 空串 = 不显示 |
+| `updated_at` | timestamptz | not null, default `now()` | — |
+
+无二级索引：主键即全部查询路径。
+
+**只落用户的选择，不落可推导的数据。** 帖子、积分、成就全部实时从各业务表算出来；这张表存三个开关与签名——它们推不出来，才需要落库。关掉的分区**不下发数据**（不是 CSS 隐藏），见 SPEC 4.5。
+
+### 3.18 `user_stats`
+
+定义：`packages/db/src/schema/social.ts`。站点访问统计（成就进度用，社交批第 3 项）。
+
+| 列 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `user_id` | text | PK, FK → `user.id` ON DELETE CASCADE | 归属；一人一行 |
+| `visit_count` | integer | not null, default 0 | 登录访问累计次数 |
+| `last_visit_at` | timestamptz | nullable | 节流位点，见下 |
+
+无二级索引。**必须落库**：`visit_count` 是累计量，没有别的表能推出来。节流靠 `last_visit_at`——同一用户 1 小时内只计一次（`shouldCountVisit`，窗口是领域层常量），否则每次请求都 +1 会变成无意义的数字。
+
+### 3.19 `user_points`
+
+定义：`packages/db/src/schema/social.ts`。积分余额（社交批第 5 项）。
+
+| 列 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `user_id` | text | PK, FK → `user.id` ON DELETE CASCADE | 归属；一人一行 |
+| `balance` | integer | not null, default 0 | **积分事实来源** |
+| `updated_at` | timestamptz | not null, default `now()` | — |
+
+**单独一张窄表，不塞进 `user`。** 积分变动频繁，写 `user` 那张宽表会牵连其它字段的更新时间与缓存；窄表只有一个写入口（领域层 `applyPoints`，同时写本表与 `point_transactions`）。参考实现的迁移注释写了同一条理由。
+
+### 3.20 `point_transactions`
+
+定义：`packages/db/src/schema/social.ts`。积分流水（社交批第 5 项）。
+
+| 列 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | text | PK | 由应用层生成 |
+| `user_id` | text | not null, FK → `user.id` ON DELETE CASCADE | 归属 |
+| `delta` | integer | not null | 正数增加、负数减少 |
+| `balance` | integer | not null | 变动**后**的余额快照 |
+| `reason` | text | not null，**无 CHECK** | 来源（`checkin` / `admin`…），见下第 3 条 |
+| `detail` | text | nullable | 展示文案 |
+| `dedup_key` | text | nullable | 幂等键（`checkin:<date>`）；null = 不去重 |
+| `created_by` | text | nullable, FK → `user.id` ON DELETE **SET NULL** | 管理员发放时记操作者；用户自发行为为 null |
+| `created_at` | timestamptz | not null, default `now()` | — |
+
+索引：`point_transactions_dedup_unique_idx` **部分**唯一 `(user_id, dedup_key) WHERE dedup_key is not null`（「同一次签到只发一次」）、`point_transactions_user_idx (user_id, created_at)`（最近流水）。
+
+三条必须一起看的规则：
+
+1. **`balance` 快照可能与真实余额差一笔，事实来源始终是 `user_points.balance`。** 并发下快照只用于对账展示。这是参考实现明确写下的取舍，别反过来把流水当账。
+2. **`created_by` 用 SET NULL。** 管理员删号后「这笔分被发过」这个事实仍在，只是没了发放者档案（同 3.11 `handled_by` 的取舍）。
+3. **`reason` 故意没有 `redeem`。** 参考实现的积分能兑换中转站余额；本站只记账本、没有兑换出口，因此枚举里没有它。该列无 CHECK，将来真有出口再加值不必改迁移。
+
+### 3.21 `daily_checkins`
+
+定义：`packages/db/src/schema/social.ts`。每日签到（社交批第 4 项）。
+
+| 列 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `user_id` | text | not null, FK → `user.id` ON DELETE CASCADE | 归属 |
+| `checkin_date` | date | not null | **站点时区（UTC+8）的日历日** |
+| `points` | integer | not null | 本次实际发放合计 |
+| `base_points` | integer | not null | 基础奖励部分 |
+| `bonus_points` | integer | not null, default 0 | 里程碑部分；本批不做梯度，恒为 0，列保留 |
+| `streak` | integer | not null | 本次签到后的连续天数 |
+| `created_at` | timestamptz | not null, default `now()` | — |
+
+主键 `daily_checkins_pk (user_id, checkin_date)`；索引 `daily_checkins_user_idx (user_id, checkin_date)`（按日期倒序取最近一条算连续天数）。
+
+三条必须一起看的规则：
+
+1. **主键就是并发防线。** 重复签到变成一次唯一约束冲突，仓储用 `ON CONFLICT DO NOTHING` 翻译成「今天已签到」，不依赖先查后写。
+2. **日期按站点时区的日历日，不是 UTC 日期。** 用 UTC 日期时，UTC+8 的用户晚上 8 点之后签到会被算成「第二天」。时区口径集中在领域层一个函数（`siteDateString` / `calendarDateOf`）里，不散落。
+3. **`streak` 冗余存一列**（连续天数每次都要展示，实时算要扫全部历史）；`base_points` 与 `bonus_points` 分开存，便于将来加里程碑梯度时对账而不必回填历史行。
+
+### 3.22 `user_achievements`
+
+定义：`packages/db/src/schema/social.ts`。成就解锁记录（社交批第 6 项）。
+
+| 列 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `user_id` | text | not null, FK → `user.id` ON DELETE CASCADE | 归属 |
+| `achievement_id` | text | not null，**无外键** | 成就定义在代码里（编译期常量，同 `tools` 注册表） |
+| `level` | integer | not null | 达成时的等级 |
+| `unlocked_at` | timestamptz | not null, default `now()` | 首次达成时刻 |
+
+主键 `user_achievements_pk (user_id, achievement_id, level)`；索引 `user_achievements_user_idx (user_id)`。
+
+两条必须一起看的规则：
+
+1. **成就是纯计算的，这张表只记解锁时间。** 进度每次按当前数据实时算、不落库；主键让「同一成就同一等级只解锁一次」在并发下也成立。
+2. **等级回落不删历史行。** 资源被删导致等级下降时，历史记录保留，页面展示「历史最高等级」与首次解锁时间；当前等级以实时计算为准。`achievement_id` 无外键是这一设计的代价：定义从代码里移除后旧解锁行成孤儿，已登记在 SPEC 已知债务里（同 `audit_logs.target_id` 无外键的思路：留住发生过的事，不跟着定义走）。
 ---
 
 ## 4. 索引
@@ -369,6 +540,19 @@
 | `audit_logs_created_idx` | audit_logs | `created_at` | 审计页按时间浏览（见 3.12） |
 | `audit_logs_actor_idx` | audit_logs | `actor_id, created_at` | 按操作者查审计 |
 | `audit_logs_target_idx` | audit_logs | `target_type, target_id, created_at` | 按被操作对象反查审计 |
+| `notifications_recipient_idx` | notifications | `recipient_id, read, created_at` | 未读角标（`WHERE recipient_id = ? AND read = false`）与消息箱列表，两者都是「先定收件人再切时间」 |
+| `notifications_recipient_category_idx` | notifications | `recipient_id, category, created_at` | 消息箱按分类 tab 筛选 |
+| `notifications_dedup_unique_idx` | notifications | `recipient_id, dedup_key`（唯一，部分索引：`WHERE dedup_key is not null`） | 通知幂等的落点（见 3.14 第 1 条）；`null` 被排除，系统广播不受限 |
+| `direct_messages_from_to_idx` | direct_messages | `from_user_id, to_user_id, created_at` | 我发出的那条会话翻页 |
+| `direct_messages_to_from_idx` | direct_messages | `to_user_id, from_user_id, created_at` | 我收到的那条会话翻页（两个方向排序不同，故各建一条） |
+| `direct_messages_unread_idx` | direct_messages | `to_user_id, read_at, created_at` | 未读数与「有新消息的会话」列表 |
+| `dm_contacts_owner_status_idx` | dm_contacts | `owner_id, status` | 「我收到的待处理申请」（`WHERE owner_id = ? AND status = 'request'`） |
+| `dm_contacts_peer_idx` | dm_contacts | `peer_id, status` | 发消息前反查「我与某人是否已有关系」 |
+| `user_points` 主键 | user_points | `user_id`（唯一） | 一人一行；`ON CONFLICT (user_id) DO UPDATE` 的落点 |
+| `point_transactions_dedup_unique_idx` | point_transactions | `user_id, dedup_key`（唯一，部分索引：`WHERE dedup_key is not null`） | 「同一次签到只发一次」的落点（见 3.20 第 1 条） |
+| `point_transactions_user_idx` | point_transactions | `user_id, created_at` | 「最近流水」列表 |
+| `daily_checkins_user_idx` | daily_checkins | `user_id, checkin_date` | 按日期倒序取最近一条算连续天数 |
+| `user_achievements_user_idx` | user_achievements | `user_id` | 空间页列出某人的解锁记录 |
 
  另外由 `unique` 约束与主键隐式建出的唯一索引：`user.email`、`session.token`、`invites.code`、`reactions` 的复合主键 `(post_id, user_id)`（`reactions_pk`——并发点赞不产生重复行的落点，见 3.10 第 1 条）与 `site_config` 的单列主键（单行表，见 3.13）。
 
@@ -419,9 +603,9 @@ pnpm --filter @xsu/db db:check
 
 - **迁移与 schema 一致**：`pnpm --filter @xsu/db db:check` 通过（无 drift）。
  - **迁移可应用**：实跑 `pnpm --filter @xsu/db db:migrate`，随后
-   `docker exec xsu-postgres psql -U xsu -d xsu -c "\dt"` 应列出 `user` / `session` / `account` / `verification` / `invites`（迁移 `0000`）、`tool_runs` / `tool_favorites`（迁移 `0001`）、`posts` / `comments` / `reactions` / `reports` / `audit_logs`（迁移 `0002`）与 `site_config`（迁移 `0003`）共 13 张表，且 `drizzle.__drizzle_migrations` 有对应记录。**M1 实跑通过（2026-10-01，5 张表齐）；M2 的 `0001_tools_tables.sql` 已在本机实跑生效（2026-10-03）；M3 的 `0002_community_tables.sql` 已在本机实跑生效（2026-10-04）；M5 的 `0003_admin_tables.sql` 已在本机实跑生效（2026-10-05：`site_config` 建表、`user` 加封禁两列、`audit_logs.target_type` CHECK 扩为四值），`db:check` 无 drift。**
+   `docker exec xsu-postgres psql -U xsu -d xsu -c "\dt"` 应列出 `user` / `session` / `account` / `verification` / `invites`（迁移 `0000`）、`tool_runs` / `tool_favorites`（迁移 `0001`）、`posts` / `comments` / `reactions` / `reports` / `audit_logs`（迁移 `0002`）、`site_config`（迁移 `0003`）与社交批 9 张表（迁移 `0004`：`notifications` / `direct_messages` / `dm_contacts` / `user_spaces` / `user_stats` / `user_points` / `point_transactions` / `daily_checkins` / `user_achievements`）共 22 张表，且 `drizzle.__drizzle_migrations` 有对应记录。**M1 实跑通过（2026-10-01，5 张表齐）；M2 的 `0001_tools_tables.sql` 已在本机实跑生效（2026-10-03）；M3 的 `0002_community_tables.sql` 已在本机实跑生效（2026-10-04）；M5 的 `0003_admin_tables.sql` 已在本机实跑生效（2026-10-05：`site_config` 建表、`user` 加封禁两列、`audit_logs.target_type` CHECK 扩为四值）；社交批的 `0004_past_black_bird.sql` 已在本机实跑生效（2026-10-05：9 张表 + 2 枚 CHECK（`notifications_category_check`、`dm_contacts_status_check`）+ 9 个主键（其中 `daily_checkins_pk` / `dm_contacts_pk` / `user_achievements_pk` 是复合主键）+ 10 条普通 btree 索引 + 2 条部分唯一索引；实测 22 张表，两个部分唯一索引 `notifications_dedup_unique_idx` 与 `point_transactions_dedup_unique_idx` 的谓词都是 `WHERE dedup_key IS NOT NULL`）。`0004` 里另有三条 `site_config` 配额 CHECK 的 DROP + ADD：那是 drizzle-kit 把 `0003` 快照里的占位符 `$1` 归一化成字面量所致的一次性自愈（约束定义前后等价，已用 `pg_get_constraintdef` 核对 `site_config_*_quota_check` 三条俱在且语义相同），非本批功能改动。**
  - **本文件与代码一致**：逐列对照 `packages/db/src/schema/*.ts` 与 `packages/db/migrations/*.sql`。不一致即缺陷，改本文件。
- - **领域层规则**：邀请码、角色、工具、社区与管理员判定都有测试覆盖 —— `packages/core/tests/` 7 个文件 121 例（invites 14、tools 39、accounts 13、registration 14、access 9、community 11、admin 21）、`packages/platform/tests/` 3 个文件 28 例、分层铁律 12 例，合计 **11 个文件 161 例，`pnpm test` 全通过（M5，2026-10-05 已实跑）**。`packages/core` 分支覆盖率 97.96%（admin 模块 96.92%；门槛 80%，见 `vitest.config.ts`）。
+ - **领域层规则**：邀请码、角色、工具、社区、管理员与社交判定都有测试覆盖 —— `packages/core/tests/` 8 个文件 195 例（invites 14、tools 39、accounts 13、registration 14、access 9、community 11、admin 21、social 74）、`packages/platform/tests/` 3 个文件 28 例、分层铁律 12 例，合计 **12 个文件 235 例，`pnpm test` 全通过（社交批，2026-10-05 已实跑）**。`packages/core` 分支覆盖率 98%（`src/social` 96.41% 语句 / 98.08% 分支；门槛 80%，见 `vitest.config.ts`）。
 - **归属**：新增业务表时逐表检查第 1.1 节，缺 `user_id` 且不属例外即阻断。
 
 ## 已知债务
@@ -432,6 +616,9 @@ pnpm --filter @xsu/db db:check
 - **`session` 表无过期行清理（M2 已解决）。** 原状：过期会话不会被自动删除，只在校验时不通过。M2 起由 worker 的 `maintenance.cleanup` 任务每天 UTC 04:00 删除（`deleteExpiredSessions`，实现见 `packages/platform/src/maintenance.ts`），手工回归步骤见 `docs/TESTING.md` 第 5 节。
 - **审计日志的「只追加」可以被同一套数据库凭据绕过。** 表已建（M3，见 3.12）：行级与语句级触发器拒绝 UPDATE / DELETE / TRUNCATE（已实测）。残余风险：同一凭据可以 `DISABLE TRIGGER` 或直接改表结构；真正不可篡改需要独立凭据或外部存储，见 `docs/spec/SPEC-community.md` 的已知债务。
 - **本文件的表结构描述是手工维护的。** 没有从 schema 自动生成表结构的工具链，改 schema 时容易忘记同步本文件——这是本文档最主要的风险。
+- **`user_achievements.achievement_id` 无外键。** 成就定义在代码里，删掉一个定义后旧解锁行成孤儿（查询侧忽略未知 id）。这是「等级回落保留历史」这一设计的代价，见 3.22 第 2 条与 [`spec/SPEC-social.md`](spec/SPEC-social.md) 第 6 节。
+- **`point_transactions.balance` 快照在并发下可能与 `user_points.balance` 差一笔。** 事实来源是 `user_points`，流水只用于对账展示（3.20 第 1 条）。
+- **`notifications` 与 `point_transactions` 的部分唯一索引谓词与查询写法必须一致。** 若将来改成 `dedup_key <> ''` 之类的写法，索引会被规划器忽略而幂等仍成立（约束在），但**性能会静默退化**，属易漏项。
 - **`tool_runs` 未分区、未归档。** 保留期（缺省 30 天）内的运行历史与收藏都在单表里，量级上来后按时间删除会变慢。M2 的规模下无所谓；等历史量真正成为瓶颈时再谈分区或归档，现在加是过度设计。
 
  - **管理员入口欠账已补齐（M3，2026-10-04）。** 原 M1 债务：`scripts/grant-admin.mjs` 计划内但未建、M1 端到端只验了「非管理员被拒」一侧。现状：`scripts/grant-admin.ts` 已建并实跑验证三条路径（提权成功 / 用户不存在 exit 1 / 幂等跳过，见第 5.3 节）；e2e 的 `admin-seed.ts` 用内部适配器造管理员号，`/admin/reports` 后台已随 M3 落地，其余五个管理页与封禁 / 配置入口已随 M5 落地（见 [`spec/SPEC-admin.md`](spec/SPEC-admin.md)）。`create-invites.mjs` 是**仅剩的脚本欠账**——目前发码仍靠直接改库，随 M4 一并补。

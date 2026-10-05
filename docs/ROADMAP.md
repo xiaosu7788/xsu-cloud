@@ -25,6 +25,11 @@
 - **M6 在 M5 之后。** 生图工作台是唯一需要「队列 + 轮询 + 结果转存」的模块，它的可靠性依赖前面已经跑通的 worker 基础设施（M2 就已经引入 worker，M6 只是加任务类型）。
 - **M7 不是「收尾」，是独立里程碑。** 单机部署下备份与恢复演练必须专门安排时间，否则永远不会做。
 
+- **「纯站内社交功能批」不占里程碑编号，排在设计系统对齐之后。** 判据是「不依赖外部系统」：这六项功能
+  只用 Postgres + Redis + 现有 worker 就能完整实现，而 M4/M6 的价值全在外部系统与转存链路上。把它们挂在
+  M4/M6 之后等于让最没有风险的活排在最贵的前置条件后面；提前插在 M5 之后，既不动 M0–M7 的划分，也不阻塞
+  M6 的技术依赖（worker 在 M2 就已具备）。
+
 ## 3. 各里程碑
 
 ### M0 — 地基与文档
@@ -201,6 +206,33 @@
 `html` 无背景的红线保持、深色下 `CursorGlow` 挂载且 `z-index: 45`、360px 无横向滚动）。
 
 **已知债务**：`badge` / `skeleton` / `data-fade` 已移植未接线，见 [`DESIGN.md`](DESIGN.md) 第 9 节。
+
+### 纯站内社交功能批（M5 之后，非里程碑）
+
+**为什么插在这里**：参考实现的功能清单里有 6 项功能只用得到 Postgres + Redis + 现有 worker，不需要任何
+外部系统。它们既不属中转站也不属生图工作台，因此按「M5 之后、M6 之前」的独立批次推进，不占里程碑编号。
+范围判定标准与逐表设计理由见 [`spec/SPEC-social.md`](spec/SPEC-social.md)。
+
+**推进顺序即依赖顺序**：通知 → 私信（入站产生通知）→ 个人空间 → 积分 → 签到（发放积分）→ 成就。
+排行榜不在本批（理由见 `SPEC-social.md` 1.2）。
+
+**当前状态（2026-10-05）：领域层与数据层已落盘，页面层尚未开工。**
+
+- 数据层：`packages/db/src/schema/social.ts` 九张表 + 迁移 `0004_past_black_bird.sql`，已在本机实跑生效
+  （库内 22 张表、2 条部分唯一索引），`db:check` 无 drift；逐表说明见 [`DATA-MODEL.md`](DATA-MODEL.md)
+  3.14–3.22。
+- 领域层：`packages/core/src/social/`（`rules` / `notifications` / `points` / `checkins` / `messages` /
+  `space` / `achievements` / `types` / `index`），端口以 `SocialPorts` 注入，纯函数无 I/O。
+- 验证：`pnpm test` **12 个文件 235 个用例全过**（其中 `social.test.ts` 74 例），`packages/core` 分支
+  覆盖率 **98%**（`src/social` 96.41% 语句 / 98.08% 分支，门槛 80%）；`pnpm typecheck` / `pnpm lint` /
+  `format:check` 退出码 0。
+
+**未做的部分**：页面、Server Action、API 路由与端到端用例都还没写。[`PRD.md`](PRD.md) 3.7 的六条验收标准
+目前只有单测一侧的证据，**要等页面层落地才算兑现**——中间不得声称「社交功能已完成」。
+
+**已知债务**：除 `SPEC-social.md` 第 6 节登记的五条外，本批新增一条——`notifications` 与
+`point_transactions` 的幂等依赖部分唯一索引的谓词与查询写法一致，换成别的写法不破坏幂等，但会让索引
+静默失效（见 [`DATA-MODEL.md`](DATA-MODEL.md) 已知债务）。
 
 ### M6 — 生图工作台
 

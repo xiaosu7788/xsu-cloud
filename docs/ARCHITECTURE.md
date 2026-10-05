@@ -129,7 +129,7 @@
 
 ## 5. 数据模型分区
 
-详细表结构见 [`DATA-MODEL.md`](DATA-MODEL.md)（M1 建立：鉴权四表 + 邀请码表；M2 建立：`tool_runs` + `tool_favorites`）。此处只固定分域与关键设计点。
+详细表结构见 [`DATA-MODEL.md`](DATA-MODEL.md)（M1 建立：鉴权四表 + 邀请码表；M2 建立：`tool_runs` + `tool_favorites`；M3 建立：社区四表 + `audit_logs`；M5 建立：`site_config`；社交批建立：通知 / 私信 / 空间 / 积分 / 签到 / 成就九表，见其 3.14–3.22）。此处只固定分域与关键设计点。
 
 | 域 | 核心表 | 关键设计点 |
 | --- | --- | --- |
@@ -138,6 +138,7 @@
 | `tools` | `tool_runs`、`tool_favorites` | **没有 `tools` 表**：工具目录在代码里（`packages/core/src/tools/registry.ts`），所以 `tool_slug` 无外键、删工具不清理历史。`tool_runs` 存输入输出摘要与耗时用于配额与审计，**不存敏感内容**——标记 `sensitive` 的工具连预览都不存 |
 | `genimage` | `image_jobs`、`image_assets`、`image_presets` | `image_jobs` 存外部任务 ID 与状态机；`image_assets` 只存对象存储 key 与元数据，**不存二进制** |
 | `ops` | `audit_logs`、`api_usage`、`settings` | `audit_logs` 只追加不更新；`settings` 集中放可调开关 |
+| `social` | `notifications`、`direct_messages`、`dm_contacts`、`user_spaces`、`user_stats`、`user_points`、`point_transactions`、`daily_checkins`、`user_achievements`（均为社交批，同一迁移 `0004`） | 通知与私信**不复用同一张表**：通知是单向的（收件人 + 触发者），私信要表达「我读没读、对端是谁」。幂等一律靠唯一约束（`notifications` 的 `(recipient_id, dedup_key)` 与 `point_transactions` 的 `(user_id, dedup_key)` 各一条部分唯一索引，谓词 `where dedup_key is not null`），**不靠「先查后插」**；签到用 `(user_id, checkin_date)` 复合主键挡重复，日期按站点时区（UTC+8）的日历日算；`user_achievements` 的 `achievement_id` **无外键**，成就定义在代码里（同 `tools` 注册表），表只记解锁时间；积分余额与流水分开（窄表 `user_points` 是唯一事实来源，`point_transactions.balance` 只是快照）
 
 ### 5.1 资源归属（强制）
 
@@ -285,7 +286,7 @@
 ## 已知债务
 
 - **第 8 节的数字只覆盖读路径与单副本。** 真实网络、CDN、多副本、并发写、被限流挡住的 `get-session` 都没有数字；内存峰值 886 MB 且压测结束后不回落的现象也**尚无根因**。缺什么、怎么补，见第 8 节末尾与 [`TESTING.md`](TESTING.md) 第 6 节。
-- 第 5 节的分域与关键设计点已落到 [`DATA-MODEL.md`](DATA-MODEL.md)（M1：鉴权四表 + 邀请码表；M2：`tool_runs` + `tool_favorites`；M3：`community` 五张表 + `audit_logs`，见其 3.8–3.12 节）；**`genimage` / `ops` 域中除 `audit_logs` 外的表尚未设计**。
+- 第 5 节的分域与关键设计点已落到 [`DATA-MODEL.md`](DATA-MODEL.md)（M1：鉴权四表 + 邀请码表；M2：`tool_runs` + `tool_favorites`；M3：`community` 五张表 + `audit_logs`，见其 3.8–3.12；M5：`site_config`；社交批：九张表，见其 3.14–3.22）；**`genimage` / `ops` 域中除 `audit_logs` 外的表尚未设计**。社交批的页面层与端到端用例同样尚未开工，见 [`ROADMAP.md`](ROADMAP.md)「纯站内社交功能批」。
 - 第 7 节已落地的只有队列（7.3）与缓存中的点赞计数（7.2，M3）；对象存储（7.1）与列表缓存仍是方向性描述。7.2 的表格「现状」一列就是为了不再出现「写了等于做了」的误读。
 - 第 7.4 节的原语：「`ResponsiveNav` + 断点常量」已被 M1 的移动视口端到端用例覆盖（导航形态切换、360px 无横向滚动、触控目标），`ResponsiveTable` 已被 M2 的运行历史页真实使用且两种形态都有用例（`apps/web/e2e/tools.spec.ts`）；**`ResponsiveGallery` 仍然零使用**——它要等到 M6 的生图工作台才有真实用法，现在只有类型与实现。
 - 生图全链路（6.2）中「外部签名链接的实际有效期」来自对外部系统的调研，**未在本项目实际源上验证**，见 [`PRD.md`](PRD.md) 已知债务。

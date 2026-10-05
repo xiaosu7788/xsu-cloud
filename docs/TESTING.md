@@ -56,26 +56,32 @@ pnpm test           # Vitest + v8 覆盖率
 | `packages/core/tests/tools.test.ts` | 39 | 工具箱领域层：输入校验、配额窗口、摘要截断与脱敏、跨用户访问拒绝、失败码 |
 | `packages/core/tests/community.test.ts` | 11 | 社区领域层：游标翻页不重不漏、并发点赞幂等且计数单增、软删除可见性、举报不自动下架与审核同事务审计、输入归一化校验、唯一约束竞态下的收敛 |
 | `packages/core/tests/admin.test.ts` | 21 | 后台管理领域层：访问门统一拒绝、用户管理（角色/封禁/解封/防自锁）、内容管理（帖评下架恢复/幂等不写审计）、站点配置三态校验与 upsert、任务与概览透传 |
+| `packages/core/tests/social.test.ts` | 74 | 站内社交领域层：通知去重与代收件人隔离、积分幂等与余额不变量（余额 = 流水 `delta` 之和）、签到跨日与连续天数、私信申请三态流转与免申请豁免、空间开关裁剪、成就首次解锁与等级回落保留历史 |
 | `packages/platform/tests/env.test.ts` | 20 | 配置校验：必填、范围、缺省回退 |
 | `packages/platform/tests/mail.test.ts` | 3 | 控制台邮件传输的产出与生产环境拒绝 |
 | `packages/platform/tests/queue.test.ts` | 5 | `dispatchJob` 分派与失败计数（**刻意不连 Redis**，理由写在文件头） |
 
-**实测（2026-10-05 M5）：`pnpm test` = 11 个文件 161 个用例全通过。**
+**实测（2026-10-05 社交批）：`pnpm test` = 12 个文件 235 个用例全通过**（较 M5 多一个文件与 74 例，均来自 `social.test.ts`）。
 
-### 2.4 覆盖率现状（2026-10-05 M5，`vitest run --coverage`）
+### 2.4 覆盖率现状（2026-10-05 社交批，`vitest run --coverage`）
 
 | 范围 | 语句 | 分支 | 函数 | 行 |
 | --- | --- | --- | --- | --- |
-| `packages/core` 合计（即覆盖率报告的 All files，报告只含 core 文件） | 99.03% | **97.96%** | 99.18% | 99.01% |
-| `packages/core/src/admin`（M5 新增） | 98.41% | 96.92% | 96.42% | 98.4% |
+| `packages/core` 合计（即覆盖率报告的 All files，报告只含 core 文件） | 98.34% | **98%** | 96.64% | 98.42% |
+| `packages/core/src/social`（社交批新增） | 96.41% | 98.08% | 91.07% | 96.78% |
+| `packages/core/src/admin` | 98.41% | 96.92% | 96.42% | 98.4% |
 | `packages/core/src/community` | 99.16% | 98.77% | 100% | 99.16% |
 | `packages/core/src/tools` | 99.21% | 96.42% | 100% | 99.16% |
 
-未覆盖的分支按文件分四组：`src/community/reports.ts:49`（举报输入校验失败分支）与 `:161`
+未覆盖的分支按文件分五组：`src/community/reports.ts:49`（举报输入校验失败分支）与 `:161`
 （举报已被处理的失败分支）；`src/tools/registry.ts:32`（模块加载时抛「重复 slug」，代价是污染
-模块级注册表）与 `src/tools/types.ts:62`；M5 新增的 `src/admin/content.ts:158`（评论已在目标态时
+模块级注册表）与 `src/tools/types.ts:62`；`src/admin/content.ts:158`（评论已在目标态时
 条件写未命中的幂等分支）与 `:177`（恢复评论时评论不存在）；`src/admin/rules.ts:139`（恒等辅助函数
-`adminAuditAction`）。四个 `index.ts` 桶文件（core 根、admin、community、tools）是 0%，
+`adminAuditAction`）；社交批的 `src/social/messages.ts:55`（消息正文校验失败的直接返回）、`:153` / `:161`
+（`countUnread` 与 `listPendingRequests` 两个薄透传函数体）、`:188`（申请者等于处理者的自反分支）、
+`src/social/achievements.ts:271-272`（`listUnlocks` 的透传与行投影）、`src/social/points.ts:62`
+（`getPointsBalance` 的透传）。这五处都是「一行透传端口」或防御性分支，不是被漏掉的业务规则。
+五个 `index.ts` 桶文件（core 根、admin、community、tools、social）是 0%，
 它们是纯 re-export，没有可执行分支。
 
 ---
