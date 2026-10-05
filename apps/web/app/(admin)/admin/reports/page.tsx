@@ -26,6 +26,7 @@ import { createCommunityPorts } from '@xsu/platform';
 
 import { confirmTakedownAction, dismissReportAction } from './actions';
 
+import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AccessDenied } from '@/features/auth/access-denied';
@@ -80,7 +81,7 @@ export default async function AdminReportsPage() {
   if (!reports.ok) {
     return (
       <div className="flex flex-col gap-6">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">举报处理</h1>
+        <PageHeader title="举报处理" />
         <p className="text-sm text-destructive">{reports.failure.message}</p>
       </div>
     );
@@ -89,7 +90,7 @@ export default async function AdminReportsPage() {
   if (!auditLogs.ok) {
     return (
       <div className="flex flex-col gap-6">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">举报处理</h1>
+        <PageHeader title="举报处理" />
         <p className="text-sm text-destructive">{auditLogs.failure.message}</p>
       </div>
     );
@@ -103,12 +104,10 @@ export default async function AdminReportsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">举报处理</h1>
-        <p className="text-sm text-muted-foreground">
-          举报不会自动下架内容；确认下架由管理员在这里完成，全部动作都有审计记录。
-        </p>
-      </section>
+      <PageHeader
+        title="举报处理"
+        description="举报不会自动下架内容；确认下架由管理员在这里完成，全部动作都有审计记录。"
+      />
 
       <Card>
         <CardHeader>

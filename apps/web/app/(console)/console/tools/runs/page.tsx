@@ -22,6 +22,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ResponsiveTable, type ResponsiveTableColumn } from '@/components/responsive-table';
@@ -61,12 +62,10 @@ export default async function ConsoleToolRunsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">运行历史</h1>
-        <p className="text-sm text-muted-foreground">
-          只有你自己能看到自己的记录；每条记录都带耗时与结果摘要。
-        </p>
-      </section>
+      <PageHeader
+        title="运行历史"
+        description="只有你自己能看到自己的记录；每条记录都带耗时与结果摘要。"
+      />
 
       <div className="flex flex-wrap gap-3">
         <Button asChild variant="outline" size="sm">

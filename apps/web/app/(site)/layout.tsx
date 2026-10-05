@@ -21,6 +21,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
+import { PageEnter } from '@/components/page-enter';
 import { SiteNav } from '@/components/site-nav';
 import { ThemeToggle } from '@/components/theme-toggle';
 
@@ -75,9 +76,13 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
        * 移动端 `pb-[calc(3.5rem+env(safe-area-inset-bottom))]`：给 `SiteNav` 的底部 Tab
        * 让位（`h-14` = 3.5rem），与 `ResponsiveNav` 内容区的写法一致——安全区由 Tab 栏自己
        * 吃掉，内容区只让出 Tab 栏高度本身。`md:pb-0`：桌面端没有 Tab，恢复原 `py-8`。
+       *
+       * 内容外面套 `PageEnter`（客户端组件）：切页时页面区块依次淡入，而顶栏与底部 Tab 在它
+       * 外面、不参与。它取 `usePathname()` 而不是 `useSearchParams()` —— 后者会要求 Suspense
+       * 边界，并让本分区失去静态预渲染，直接违反本文件开头那条红线。
        */}
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
-        {children}
+        <PageEnter>{children}</PageEnter>
       </main>
     </div>
   );

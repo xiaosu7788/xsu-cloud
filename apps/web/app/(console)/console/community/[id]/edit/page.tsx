@@ -27,6 +27,7 @@ import { redirectToSignInIfUnauthenticated } from '@/features/auth/guard';
 import { readConsoleAccess } from '@/features/auth/session';
 import { PostForm } from '@/features/community/post-form';
 
+import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 
 type EditPageProps = { params: Promise<{ id: string }> };
@@ -53,36 +54,43 @@ export default async function ConsoleCommunityEditPage({ params }: EditPageProps
 
   if (post.deletedAt !== null || post.authorId !== access.user.id) {
     return (
-      <section className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">无法编辑</h1>
-        <p className="text-sm text-muted-foreground">
-          这篇帖子已被删除、已下架，或不是你发的帖子。
-        </p>
-        <div className="flex flex-wrap items-center gap-3">
-          <Button asChild variant="outline">
-            <Link href={CONSOLE_COMMUNITY}>返回我的帖子</Link>
-          </Button>
-          <Link href={communityPostPath(post.id)} className="text-sm underline underline-offset-4">
-            查看帖子
-            <span aria-hidden>→</span>
-          </Link>
-        </div>
-      </section>
+      <div className="flex flex-col gap-6">
+        <PageHeader
+          title="无法编辑"
+          description="这篇帖子已被删除、已下架，或不是你发的帖子。"
+          actions={
+            <>
+              <Button asChild variant="outline">
+                <Link href={CONSOLE_COMMUNITY}>返回我的帖子</Link>
+              </Button>
+              <Link
+                href={communityPostPath(post.id)}
+                className="text-sm underline underline-offset-4"
+              >
+                查看帖子
+                <span aria-hidden>→</span>
+              </Link>
+            </>
+          }
+        />
+      </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">编辑帖子</h1>
-        <p className="text-sm text-muted-foreground">
-          保存后会同步刷新公开页；公开时间线在{' '}
-          <Link href={COMMUNITY_HOME} className="underline underline-offset-4">
-            社区首页
-          </Link>
-          。
-        </p>
-      </section>
+      <PageHeader
+        title="编辑帖子"
+        description={
+          <>
+            保存后会同步刷新公开页；公开时间线在{' '}
+            <Link href={COMMUNITY_HOME} className="underline underline-offset-4">
+              社区首页
+            </Link>
+            。
+          </>
+        }
+      />
 
       <PostForm
         action={updatePostAction.bind(null, post.id)}

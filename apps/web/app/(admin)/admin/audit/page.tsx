@@ -13,6 +13,7 @@ import { ADMIN_PAGE_SIZE_DEFAULT, listAuditLogsForAdmin } from '@xsu/core';
 import type { AuthorSummary } from '@xsu/db';
 import { createAdminGateway, createCommunityPorts } from '@xsu/platform';
 
+import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ResponsiveTable, type ResponsiveTableColumn } from '@/components/responsive-table';
 import { AccessDenied } from '@/features/auth/access-denied';
@@ -49,7 +50,7 @@ export default async function AdminAuditPage({
   if (!logs.ok) {
     return (
       <div className="flex flex-col gap-6">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">审计日志</h1>
+        <PageHeader title="审计日志" />
         <p className="text-sm text-destructive">{logs.failure.message}</p>
       </div>
     );
@@ -117,12 +118,10 @@ export default async function AdminAuditPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">审计日志</h1>
-        <p className="text-sm text-muted-foreground">
-          全站敏感操作的只读时间线：审计行与业务写在同一事务里落库，没有 UPDATE / DELETE 路径。
-        </p>
-      </section>
+      <PageHeader
+        title="审计日志"
+        description="全站敏感操作的只读时间线：审计行与业务写在同一事务里落库，没有 UPDATE / DELETE 路径。"
+      />
 
       <Card>
         <CardHeader>

@@ -141,6 +141,7 @@ Temp/                       临时文件与中间产物（已 gitignore，约定
 | `docs/API.md` | B | 对外接口与错误码 | 加接口 |
 | `docs/spec/SPEC-*.md` | B | 单个需求的可执行规格 | 需求开工前 |
 | `docs/TESTING.md` | B | 怎么验、验什么、覆盖线 | A 级改动补验证 |
+| `docs/DESIGN.md` | A | 设计 token、字体、层次、动效、共享组件契约、刻意偏离参考实现的对比度结论 | **token、组件契约或对比度结论变化时不同步就阻断合并** |
 | `docs/SECURITY.md` | B | 权限模型、密钥管理、数据边界 | 权限或鉴权变化 |
 | `docs/DEPLOYMENT.md` | B | 部署、备份、回滚 | 部署方式变化 |
 | `docs/CODING-STANDARDS.md` | C | 代码风格与命名 | 很少 |

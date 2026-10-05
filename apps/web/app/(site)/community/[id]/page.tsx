@@ -18,6 +18,7 @@ import { notFound } from 'next/navigation';
 import { listPostComments, readPost } from '@xsu/core';
 import { createCommunityPorts, type CommunityGateway } from '@xsu/platform';
 
+import { PageHeader } from '@/components/page-header';
 import { CommentForm } from '@/features/community/comment-form';
 import { LikeButton } from '@/features/community/like-button';
 import { ReportButton } from '@/features/community/report-button';
@@ -55,13 +56,17 @@ export default async function CommunityPostPage({ params }: { params: Promise<{ 
 
   if (post.deletedAt !== null) {
     return (
-      <section className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">内容不可见</h1>
-        <p className="text-sm text-muted-foreground">这篇帖子已被删除或下架，或不存在。</p>
-        <Link href={COMMUNITY_HOME} className="text-sm underline underline-offset-4">
-          返回社区首页
-        </Link>
-      </section>
+      <div className="flex flex-col gap-6">
+        <PageHeader
+          title="内容不可见"
+          description="这篇帖子已被删除或下架，或不存在。"
+          actions={
+            <Link href={COMMUNITY_HOME} className="text-sm underline underline-offset-4">
+              返回社区首页
+            </Link>
+          }
+        />
+      </div>
     );
   }
 

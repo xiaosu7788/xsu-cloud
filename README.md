@@ -69,6 +69,7 @@ docs/  docker/  scripts/  .github/workflows/  Temp/
 | [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) | 外部系统集成契约与适配器约定 |
 | [`docs/DATA-MODEL.md`](docs/DATA-MODEL.md) | 表、字段、索引、迁移纪律与「这张表是谁的」约定 |
 | [`docs/TESTING.md`](docs/TESTING.md) | 四档验证各验什么、覆盖率门槛、集成测试形态、手工回归步骤 |
+| [`docs/DESIGN.md`](docs/DESIGN.md) | 设计系统基线：token、字体、玻璃层次、动效、共享组件契约与已知债务 |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | 改了什么：按里程碑追加，含实查后的依赖版本 |
 
 尚未建立的文档（按需补齐）：`docs/API.md`、`docs/SECURITY.md`、`docs/DEPLOYMENT.md`、`docs/ADR/`。

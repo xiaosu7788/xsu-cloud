@@ -184,6 +184,24 @@
 - **越权被领域层拒绝并有测试**：每个 admin 入口第一步都是 `requireAdminActor`；`admin.test.ts` 覆盖非管理员被拒；e2e 对 7 条 admin 路由断言统一拒绝视图、对 9 条受保护路由断言匿名同形 `307 → /sign-in`。
 - **公开页静态化不受影响**：`static-render.spec.ts` 全绿；构建路由表中 7 条 admin 路由全为 `ƒ` 动态渲染；`/` 等公开页预渲染清单与 M3 一致。
 
+### 设计系统基线对齐 DoulorCloud（M5 之后，非里程碑）
+
+**为什么插在这里**：M1 承诺的「设计系统」只落到了 token 与三个响应式原语，页面层的标题层级、空态、外壳质感
+各页各写。以参考实现（`DoulorCloud-main`）为基线做一次全量对齐，属于把 M1 的欠账补上，不改变 M0–M7 的
+里程碑划分，因此不占新编号。基线口径与已知债务见 [`DESIGN.md`](DESIGN.md)。
+
+**落盘**：`globals.css` 设计基线（自托管 Outfit、`glass-*` 三档、`page-enter` / `data-fade` 关键帧、
+`cursor-glow`、云纹底纹、reduced-motion 收口）、7 个共享组件、19 个页面改用 `PageHeader`、
+4 处空态改用 `EmptyState`、控制台外壳按角色装配导航入口（修掉「管理员看不见后台入口」）。
+
+**验证**：`pnpm test` 11 个文件 161 个用例全过（core 分支覆盖率 97.96%）；`pnpm lint` / `format:check` /
+`typecheck` 退出码 0；`pnpm --filter @xsu/web test:e2e` **87 passed / 6 skipped / 0 failed**——与对齐前
+逐条一致，说明这次改动没有回归；另有只读运行时探针 25 项全过（产物 CSS 里 `glass-*` 三类与
+`page-enter` / `data-fade-in` 关键帧确实产出、`color-mix` 透明度 0.68、`backdrop-filter` 生效、
+`html` 无背景的红线保持、深色下 `CursorGlow` 挂载且 `z-index: 45`、360px 无横向滚动）。
+
+**已知债务**：`badge` / `skeleton` / `data-fade` 已移植未接线，见 [`DESIGN.md`](DESIGN.md) 第 9 节。
+
 ### M6 — 生图工作台
 
 **目标**：跑通「队列 + 轮询 + 结果转存」这条最容易出错的链路。

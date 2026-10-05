@@ -14,10 +14,14 @@
  * 页面的语义，直接给空态。
  */
 import type { Metadata } from 'next';
+import Link from 'next/link';
 
 import { listFeed } from '@xsu/core';
 import { createCommunityPorts, type CommunityGateway } from '@xsu/platform';
 
+import { EmptyState } from '@/components/empty-state';
+import { PageHeader } from '@/components/page-header';
+import { COMMUNITY_SEARCH } from '@/features/community/routes';
 import { PostList } from '@/features/community/post-list';
 import { toPostCardModels } from '@/features/community/view';
 
@@ -79,12 +83,17 @@ export default async function CommunityTagPage({ params }: TagPageProps) {
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">标签：{normalized}</h1>
-        <p className="text-sm text-muted-foreground">按标签浏览的公开帖子。</p>
-      </section>
+      <PageHeader title={`标签：${normalized}`} description="按标签浏览的公开帖子。" />
       {posts.length === 0 ? (
-        <p className="text-sm text-muted-foreground">这个标签下还没有帖子。</p>
+        <EmptyState
+          title="这个标签下还没有帖子"
+          description="换个标签，或直接搜索标题与正文。"
+          action={
+            <Link href={COMMUNITY_SEARCH} className="text-sm underline underline-offset-4">
+              搜索帖子
+            </Link>
+          }
+        />
       ) : (
         <PostList posts={posts} nextCursor={outcome.nextCursor} tag={normalized} />
       )}

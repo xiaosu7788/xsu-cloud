@@ -31,11 +31,18 @@
  *
  * 外层用 `min-h-dvh` 而不是 `min-h-screen`：移动浏览器地址栏收起时 `vh` 不变，
  * 用 `vh` 会得到一段被地址栏盖住、滚不到的内容（`docs/PRD.md` 4.1）。
+ *
+ * ## 两套壳都用亚克力面板
+ *
+ * 桌面侧边栏走 `glass-sidebar`、移动底部 Tab 走 `glass-panel`（`app/globals.css`），与公开站
+ * 顶栏同一套视觉。内容区外面套 `PageEnter`：切页时只有页面内容入场，侧边栏与 Tab 不动 ——
+ * 把它们也包进去，点一次导航整个外壳都会跟着闪一下。
  */
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 
+import { PageEnter } from '@/components/page-enter';
 import { cn } from '@/components/utils';
 
 /**
@@ -110,7 +117,7 @@ export function ResponsiveNav({
   return (
     <div className={cn('flex min-h-dvh flex-col lg:flex-row', className)}>
       {/* 桌面壳：窄屏整块移出可访问性树，不会与底部 Tab 重复播报。 */}
-      <aside className="hidden border-border lg:flex lg:w-60 lg:shrink-0 lg:flex-col lg:border-r">
+      <aside className="glass-sidebar hidden border-border lg:flex lg:w-60 lg:shrink-0 lg:flex-col lg:border-r">
         {header ? <div className="px-4 py-4">{header}</div> : null}
 
         <nav aria-label={label} className="flex-1 px-2 py-2">
@@ -141,7 +148,8 @@ export function ResponsiveNav({
       </aside>
 
       <div className="min-w-0 flex-1 pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pb-0">
-        {children}
+        {/* 内容区入场动画：外壳（侧边栏 / 底部 Tab）留在外面，不跟着闪。 */}
+        <PageEnter>{children}</PageEnter>
       </div>
 
       {/*
@@ -151,7 +159,7 @@ export function ResponsiveNav({
       <nav
         aria-label={label}
         className={cn(
-          'fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 backdrop-blur',
+          'glass-panel fixed inset-x-0 bottom-0 z-40 border-t border-border',
           'pb-[env(safe-area-inset-bottom)] lg:hidden',
         )}
       >

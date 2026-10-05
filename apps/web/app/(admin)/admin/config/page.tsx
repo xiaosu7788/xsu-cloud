@@ -19,6 +19,7 @@ import type { SiteConfigDetail } from '@xsu/db/schema';
 import { getSiteConfigForAdmin } from '@xsu/core';
 import { createAdminGateway, createCommunityPorts } from '@xsu/platform';
 
+import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -82,7 +83,7 @@ export default async function AdminConfigPage({
   if (!config.ok) {
     return (
       <div className="flex flex-col gap-6">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">站点配置</h1>
+        <PageHeader title="站点配置" />
         <p className="text-sm text-destructive">{config.failure.message}</p>
       </div>
     );
@@ -97,12 +98,10 @@ export default async function AdminConfigPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">站点配置</h1>
-        <p className="text-sm text-muted-foreground">
-          覆盖社区与工具的每小时配额。保存后立即生效，全部改动都有审计记录。
-        </p>
-      </section>
+      <PageHeader
+        title="站点配置"
+        description="覆盖社区与工具的每小时配额。保存后立即生效，全部改动都有审计记录。"
+      />
 
       <AdminBanner ok={readOkCode(params.ok)} error={readErrorCode(params.error)} />
 

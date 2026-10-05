@@ -24,17 +24,21 @@
  * 都必须真的有一个页面——这条约束靠人工 review 维持，见 `features/auth/routes.ts` 文件头。
  * 移动端不渲染侧边栏底部的 `AccountPanel`，所以「账号设置」同时是手机上退出登录与切换主题的
  * 唯一入口，不能从清单里删。
+
+ * 管理员的清单比普通用户多一条「后台管理」，见下面的 `consoleNavItems`。
  */
-import Link from 'next/link';
-import { FileText, Gauge, Settings, Wrench } from 'lucide-react';
 import type { ReactNode } from 'react';
+import Link from 'next/link';
+import { FileText, Gauge, Settings, ShieldCheck, Wrench } from 'lucide-react';
+
+import { isAdmin, type Role } from '@xsu/core';
 
 import { ResponsiveNav, type NavItem } from '@/components/responsive-nav';
 
 import { AccessDenied } from '@/features/auth/access-denied';
 import { AccountPanel } from '@/features/auth/account-panel';
 import { redirectToSignInIfUnauthenticated } from '@/features/auth/guard';
-import { CONSOLE_HOME, CONSOLE_SETTINGS, SITE_HOME } from '@/features/auth/routes';
+import { ADMIN_HOME, CONSOLE_HOME, CONSOLE_SETTINGS, SITE_HOME } from '@/features/auth/routes';
 import { CONSOLE_COMMUNITY } from '@/features/community/routes';
 import { readConsoleAccess } from '@/features/auth/session';
 import { CONSOLE_TOOLS } from '@/features/tools/routes';
@@ -45,7 +49,7 @@ import { CONSOLE_TOOLS } from '@/features/tools/routes';
  * 每一项都必须真的有一个页面——这条约束靠人工 review，见 `features/auth/routes.ts` 文件头。
  * `console` / `settings` 是 M1 的，工具箱是 M2 的，「我的帖子」是 M3 的。中转站入口与
  * 「我的任务」排在 M4 / M6，落地时加在这里——在导航里写一个还没有页面的路径，用户点进去
- * 只会看到 404。
+ * 只会看到 404。角色相关的项不写在这里，见下面的 `consoleNavItems`。
  */
 const CONSOLE_NAV_ITEMS: readonly NavItem[] = [
   {
@@ -72,6 +76,30 @@ const CONSOLE_NAV_ITEMS: readonly NavItem[] = [
   },
 ];
 
+/**
+ * 控制台入口清单：管理员比普通用户多一条「后台管理」。
+ *
+ * 角色用的是布局里 `readConsoleAccess()` 的同一个结论——一次请求内只判定一次，不额外查库；
+ * 也不下发给客户端判断，非管理员的 HTML 里根本没有这个链接。
+ *
+ * 这条入口只能长在这里。登录后的落点是控制台，而公开页顶栏（`components/site-nav.tsx`）
+ * 不读会话——`(site)` 必须保持静态渲染（`docs/ARCHITECTURE.md` 7.1 红线 1），
+ * 所以「谁看得见哪个入口」这类差异只能出现在两个分区外壳里。
+ */
+function consoleNavItems(role: Role): readonly NavItem[] {
+  if (!isAdmin(role)) {
+    return CONSOLE_NAV_ITEMS;
+  }
+  return [
+    ...CONSOLE_NAV_ITEMS,
+    {
+      href: ADMIN_HOME,
+      label: '后台管理',
+      icon: <ShieldCheck aria-hidden className="size-5" />,
+    },
+  ];
+}
+
 export default async function ConsoleLayout({ children }: { children: ReactNode }) {
   const access = await readConsoleAccess();
 
@@ -83,7 +111,7 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
   return (
     <ResponsiveNav
       label="控制台导航"
-      items={CONSOLE_NAV_ITEMS}
+      items={consoleNavItems(access.role)}
       /*
        * 侧边栏顶部的品牌位。桌面才有；移动端靠各页面自己的标题定位。
        * `min-h-11`：与 `components/site-nav.tsx` 的品牌链接同一理由 —— 文字自身只有 18px 高，

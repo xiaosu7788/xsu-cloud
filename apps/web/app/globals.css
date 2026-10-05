@@ -13,18 +13,79 @@
  *
  * `inline` 不能省：不加的话 Tailwind 会把值复制进 `--color-*` 变量，
  * 而 `.dark` 只改 `--background` 不改 `--color-background`，深色主题会整片不生效。
+ *
+ * ## 设计系统基线对齐 DoulorCloud
+ *
+ * 字体、语义 token 补齐、工具类与动效对齐参考实现（`DoulorCloud-main/src/index.css`）。
+ * 三处**刻意不照抄**，都是对比度实算的结果，理由写在 `docs/DESIGN.md`：
+ *
+ * - `--muted-foreground`：参考实现是 `0.556`，落在 `--muted`（0.97）上只有 4.34:1，
+ *   低于 AA 要求的 4.5；本站保留 `0.505`。
+ * - `--destructive`：参考实现是 `0.577 0.245 27.325`，同样对比度不达标；
+ *   本站保留 `0.505 0.213 27.518`。
+ * - `--ring`：参考实现浅色是 `0.708`（约 #a1a1a1），白底 2.59:1，
+ *   低于 WCAG 1.4.11 要求的 3:1；本站保留 `0.556`。
+ *
+ * 参考实现的 `role-sheen` / `role-ring` / `title-ring` 与 `.markdown-body` 没有移植：
+ * 前三个是它「自定义称号」功能专用的装饰，本站没有该功能，留着就是死代码；
+ * `.markdown-body` 等本站真的引入 markdown 渲染时再补。
  */
 @import '@xsu/config/tailwind/base.css';
 
+/*
+ * `tw-animate-css` 提供 `animate-in` / `animate-out` 一族工具类，是 radix 浮层
+ * （dialog / dropdown / popover）的入场出场动画来源。
+ *
+ * 只能从**这个文件**引：它的 `exports` 只声明了 `style` 条件，
+ * 从 `packages/config` 引会解析失败，从 `apps/web/app/globals.css` 引才对得上（已实测）。
+ */
+@import 'tw-animate-css';
+
+/*
+ * 全站正文字体：Outfit（自托管可变字体，32 KB，一个文件覆盖 100–900 所有字重）。
+ *
+ * ⚠️ `unicode-range` 只含拉丁字符集 —— 中文不在范围内，会自动回退到下面的系统字体栈
+ * （苹方 / 微软雅黑 / Noto Sans SC）。这样既拿到自定义字体的观感，又不必背负几 MB
+ * 的中文字体。**不要删掉 `unicode-range`**：删了浏览器会把中文也交给 Outfit，
+ * 而 Outfit 没有中文字形 ⇒ 中文整片变豆腐块。
+ */
+@font-face {
+  font-family: 'Outfit';
+  src: url('/fonts/outfit-var.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+2000-206F, U+20AC, U+2122, U+2190-2193;
+}
+
 :root {
+  /*
+   * 界面文字以简体中文为主，因此 Outfit 之后立刻接中文字面。
+   * `--font-app` 是唯一的字体来源，`@theme inline` 与 `html` 都从它取值。
+   */
+  --font-app:
+    'Outfit', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.505 0 0);
+  /* 浮层（下拉、气泡、对话框）底色。与 card 分开是为了让浮层能独立调深一档。 */
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
   --primary: oklch(0.205 0 0);
   --primary-foreground: oklch(0.985 0 0);
+  /*
+   * secondary / accent 与 muted 同值但语义不同：muted 表示「弱化的内容」，
+   * secondary / accent 表示「次级可交互面」，将来调色时不该被一起带着走。
+   */
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.505 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.505 0.213 27.518);
   --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(0.906 0 0);
@@ -38,10 +99,16 @@
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
   --card-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.985 0 0);
   --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.145 0 0);
   --border: oklch(1 0 0 / 14%);
@@ -54,10 +121,16 @@
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
@@ -70,11 +143,85 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  /* 界面文字以简体中文为主，因此系统字体栈里优先中文字面。 */
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Noto Sans SC', 'PingFang SC',
-    'Microsoft YaHei', sans-serif;
+  /* 字体走 `--font-app`（Outfit + 中文回退），改字体只改上面那一处。 */
+  --font-sans: var(--font-app);
   --font-mono: ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+}
+
+/* ==========================================================================
+   图片加载占位骨架的扫光动画
+   ========================================================================== */
+@keyframes image-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@utility shimmer {
+  position: relative;
+  overflow: hidden;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background-image: linear-gradient(
+      90deg,
+      transparent 0,
+      color-mix(in oklab, var(--foreground) 7%, transparent) 50%,
+      transparent 100%
+    );
+    animation: image-shimmer 1.4s infinite;
+  }
+}
+
+/* ==========================================================================
+   亚克力（玻璃）面板
+
+   三档，透明度与模糊都不同：
+     · glass-panel    顶栏（中等）：68% + blur 14px
+     · glass-sidebar  侧边栏（轻度）：86% + blur 10px
+     · glass-card     卡片（轻度）：86% + blur 6px
+
+   ⚠️ backdrop-filter 有性能代价，页面里卡片数量最多，所以卡片的模糊给最小。
+   用 color-mix 从 --card 派生透明度 ⇒ 明暗主题自动适配，不必写两套色值。
+   ========================================================================== */
+@utility glass-panel {
+  background: color-mix(in oklab, var(--card) 68%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.5);
+  backdrop-filter: blur(14px) saturate(1.5);
+}
+
+/* 侧边栏与卡片同为「轻度」透明，但侧边栏面积大，模糊要给足才看得出玻璃感。 */
+@utility glass-sidebar {
+  background: color-mix(in oklab, var(--card) 86%, transparent);
+  -webkit-backdrop-filter: blur(10px) saturate(1.3);
+  backdrop-filter: blur(10px) saturate(1.3);
+}
+
+@utility glass-card {
+  background: color-mix(in oklab, var(--card) 86%, transparent);
+  -webkit-backdrop-filter: blur(6px) saturate(1.2);
+  backdrop-filter: blur(6px) saturate(1.2);
+}
+
+/*
+ * 深色主题下补一道顶边高光：只有透明度 + 模糊会显得像磨砂塑料，
+ * 这一笔才是「玻璃」的关键。浅色主题下白高光落在白底上看不出来，所以只在暗色下加。
+ */
+.dark .glass-panel {
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 9%);
+}
+
+.dark .glass-sidebar {
+  box-shadow: inset -1px 0 0 oklch(1 0 0 / 6%);
+}
+
+.dark .glass-card {
+  box-shadow:
+    0 1px 2px oklch(0 0 0 / 8%),
+    inset 0 1px 0 oklch(1 0 0 / 7%);
 }
 
 @layer base {
@@ -90,14 +237,272 @@
   /*
    * 键盘可达性是硬要求（`docs/PRD.md` 4.1「hover 不得作为唯一反馈」）：
    * 焦点环必须始终可见，因此不写 `outline: none`，也不靠 hover 变色表达状态。
+   * 刻意不采用参考实现的 `outline-ring/50`——把焦点环压到半透明正好削弱这条要求。
    */
   :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
 
-  /* 移动端点按不要出现灰色高亮块，它会被误认为「按钮已选中」。 */
   html {
+    /* 移动端横竖屏切换时不要由浏览器自动放大字号，那会让版式跳一下。 */
+    -webkit-text-size-adjust: 100%;
+    font-family: var(--font-app);
+    /* 移动端点按不要出现灰色高亮块，它会被误认为「按钮已选中」。 */
     -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* ==========================================================================
+   全站统一滚动条
+
+   浏览器默认滚动条在浅色下是纯白、深色下很突兀，与黑白灰的基调不搭，这里统一收口。
+   Firefox 走 scrollbar-width / scrollbar-color，WebKit 走 ::-webkit-scrollbar，
+   两套都要写，少一套就有半边浏览器不生效。
+   ========================================================================== */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--muted-foreground) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--muted-foreground);
+  border-radius: 9999px;
+  /* 透明边框 + padding-box：把滑块「缩」成细条，而不是铺满整条 8px 轨道。 */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 锚点跳转：sticky 顶栏会盖住目标区块的顶部，给带 id 的 section 留出偏移。 */
+section[id] {
+  scroll-margin-top: 4.5rem;
+}
+
+/* ==========================================================================
+   宽表：最后一列（操作按钮）固定在右侧
+
+   列多、总宽超出容器时，横向滚动会把「操作」按钮推出屏幕，得先滚到最右才能点。
+   sticky 让按钮永远贴在可视区右缘。
+
+   背景必须**不透明**：sticky 列浮在滚动内容之上，透明会透出下层文字。
+   表头那格用 muted（与 thead 同色系但不透明），正文格用 background（与行底色一致）。
+   ========================================================================== */
+.table-actions-sticky > thead > tr > th:last-child,
+.table-actions-sticky > tbody > tr > td:last-child {
+  position: sticky;
+  right: 0;
+  background: var(--background);
+  box-shadow: -8px 0 8px -8px rgb(0 0 0 / 0.3);
+}
+
+.table-actions-sticky > thead > tr > th:last-child {
+  background: var(--muted);
+}
+
+/* ==========================================================================
+   跟随光标的光晕（配合 components/cursor-effect.tsx）
+
+   只在深色主题下可见：浅色页面本身亮度高，叠一层只会显得脏。闸门做两层 ——
+   组件侧非 dark 时直接不挂载、不跑 rAF（省掉整条渲染链），这里只给
+   `.dark` 下的 `[data-visible="1"]` 赋透明度兜底防漏。
+
+   注意：刻意用 `background + opacity + mask` 而不是 `color-mix()` 内联渐变。
+   构建期 Lightning CSS 会把 color-mix 里 `calc(var(--x) * 100%)` 这种运行时
+   无法求值的 alpha 丢掉，产物退化成不透明色块（已实测踩到）。
+
+   三个旋钮：--glow-radius 半径 / --glow-core 中心实心占比 / --glow-alpha 中心强度。
+   ========================================================================== */
+.cursor-glow {
+  --glow-radius: 150px;
+  --glow-core: 0.35;
+  --glow-alpha: 0.055;
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: var(--foreground);
+  /* 初始隐藏：由组件的 data-visible 切换，避免用内联 opacity 覆盖 --glow-alpha。 */
+  opacity: 0;
+  transition: opacity 300ms ease;
+  -webkit-mask-image: radial-gradient(
+    circle var(--glow-radius) at var(--cursor-x, 50%) var(--cursor-y, 50%),
+    #000 0%,
+    #000 calc(var(--glow-core) * 100%),
+    transparent 100%
+  );
+  mask-image: radial-gradient(
+    circle var(--glow-radius) at var(--cursor-x, 50%) var(--cursor-y, 50%),
+    #000 0%,
+    #000 calc(var(--glow-core) * 100%),
+    transparent 100%
+  );
+}
+
+.dark .cursor-glow[data-visible='1'] {
+  opacity: var(--glow-alpha);
+}
+
+/* ==========================================================================
+   动效：页面内容渐入
+
+   只作用于「页面根元素的子元素」（= 页面里的各个区块）。外壳（侧边栏 / 顶栏）
+   包在 `.page-enter` 外面，不参与 —— 否则点导航时整个侧边栏都会跟着闪。
+   ========================================================================== */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-enter > * > * {
+  animation: page-enter 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.page-enter > * > *:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.page-enter > * > *:nth-child(2) {
+  animation-delay: 0.03s;
+}
+
+.page-enter > * > *:nth-child(3) {
+  animation-delay: 0.06s;
+}
+
+.page-enter > * > *:nth-child(4) {
+  animation-delay: 0.09s;
+}
+
+.page-enter > * > *:nth-child(5) {
+  animation-delay: 0.12s;
+}
+
+.page-enter > * > *:nth-child(6) {
+  animation-delay: 0.15s;
+}
+
+.page-enter > * > *:nth-child(7) {
+  animation-delay: 0.18s;
+}
+
+.page-enter > * > *:nth-child(8) {
+  animation-delay: 0.21s;
+}
+
+/* 第 9 个之后不再递增：再往后拖会让页面底部内容等很久才出现。 */
+.page-enter > * > *:nth-child(n + 9) {
+  animation-delay: 0.24s;
+}
+
+/* ==========================================================================
+   数据就绪：骨架 → 内容 的交叉淡化（配合 components/data-fade.tsx）
+
+   两层用 grid 叠在同一个格子里 ⇒ 容器高度自动取两者较高的那个，
+   既不用写死高度也不用 absolute，交接期间不会跳。
+   ========================================================================== */
+.data-fade {
+  display: grid;
+}
+
+.data-fade > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.data-fade-out {
+  opacity: 0;
+  transition: opacity 0.34s ease;
+}
+
+.data-fade-in {
+  animation: data-fade-in 0.34s ease both;
+}
+
+@keyframes data-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ==========================================================================
+   云纹底纹
+
+   把云图标做成规则交错的底纹铺满整页。用 `body::before` 而不是加 DOM 节点 ——
+   不动任何组件结构，也不会被页面内容遮住（`z-index: -1` 让它落在画布背景之上、
+   所有内容之下）。形状走 mask、颜色交给 background-color ⇒ 明暗主题各一个色值。
+
+   ⚠️⚠️ 两条会「静默把云纹整块盖掉」的红线，改背景相关样式前务必先看这里：
+     1. **绝不要给 `html` 设 background**。一旦 html 有背景，body 的背景就不再
+        传播到画布，而会作为普通块级背景在「负 z-index 后代」之后绘制 —— 正好
+        压住这一层，云纹直接消失，且不报任何错。
+     2. **也不要再给 body 叠一层不透明 background**。它同样会盖住这层。
+        底色要么留在 html 上（画布层）、要么交给 body 的默认传播行为，二选一。
+   ========================================================================== */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: oklch(0.145 0 0 / 1.7%);
+  -webkit-mask-image: url('data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27730%27%20height%3D%27730%27%20viewBox%3D%270%200%20730%20730%27%3E%3Cg%20transform%3D%27translate%28182.50%2C182.50%29%20rotate%280.00%29%20scale%2815.0000%29%20translate%28-12%2C-11%29%27%3E%3Cpath%20d%3D%27M17.5%2019H9a7%207%200%201%201%206.71-9h1.79a4.5%204.5%200%201%201%200%209Z%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%272.40%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28547.50%2C547.50%29%20rotate%280.00%29%20scale%2815.0000%29%20translate%28-12%2C-11%29%27%3E%3Cpath%20d%3D%27M17.5%2019H9a7%207%200%201%201%206.71-9h1.79a4.5%204.5%200%201%201%200%209Z%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%272.40%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E');
+  mask-image: url('data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27730%27%20height%3D%27730%27%20viewBox%3D%270%200%20730%20730%27%3E%3Cg%20transform%3D%27translate%28182.50%2C182.50%29%20rotate%280.00%29%20scale%2815.0000%29%20translate%28-12%2C-11%29%27%3E%3Cpath%20d%3D%27M17.5%2019H9a7%207%200%201%201%206.71-9h1.79a4.5%204.5%200%201%201%200%209Z%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%272.40%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28547.50%2C547.50%29%20rotate%280.00%29%20scale%2815.0000%29%20translate%28-12%2C-11%29%27%3E%3Cpath%20d%3D%27M17.5%2019H9a7%207%200%201%201%206.71-9h1.79a4.5%204.5%200%201%201%200%209Z%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%272.40%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E');
+  -webkit-mask-repeat: repeat;
+  mask-repeat: repeat;
+  -webkit-mask-size: 730px 730px;
+  mask-size: 730px 730px;
+}
+
+.dark body::before {
+  background-color: oklch(0.985 0 0 / 2%);
+}
+
+/* ==========================================================================
+   系统开了「减少动态效果」：把装饰性动画全部关掉。
+
+   只关装饰，不动功能性过渡（`.data-fade-out` 的 opacity 过渡保留，否则骨架
+   永远淡不掉）。`both` 填充模式下直接 `animation: none` 会停在最终态，安全。
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .page-enter > * > * {
+    animation: none;
+  }
+
+  .data-fade-in {
+    animation: none;
+  }
+
+  .shimmer::after {
+    animation: none;
+  }
+
+  .cursor-glow {
+    transition: none;
   }
 }

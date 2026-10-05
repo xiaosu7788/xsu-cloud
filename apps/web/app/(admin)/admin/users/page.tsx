@@ -23,6 +23,7 @@ import type { AdminUserView } from '@xsu/core';
 import { ADMIN_PAGE_SIZE_DEFAULT, listUsersForAdmin } from '@xsu/core';
 import { createAdminGateway } from '@xsu/platform';
 
+import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -81,7 +82,7 @@ export default async function AdminUsersPage({
   if (!users.ok) {
     return (
       <div className="flex flex-col gap-6">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">用户管理</h1>
+        <PageHeader title="用户管理" />
         <p className="text-sm text-destructive">{users.failure.message}</p>
       </div>
     );
@@ -196,12 +197,10 @@ export default async function AdminUsersPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">用户管理</h1>
-        <p className="text-sm text-muted-foreground">
-          按邮箱或名字模糊搜索；封禁会立即让该用户的全部会话下线。全部操作都有审计记录。
-        </p>
-      </section>
+      <PageHeader
+        title="用户管理"
+        description="按邮箱或名字模糊搜索；封禁会立即让该用户的全部会话下线。全部操作都有审计记录。"
+      />
 
       <AdminBanner ok={readOkCode(params.ok)} error={readErrorCode(params.error)} />
 

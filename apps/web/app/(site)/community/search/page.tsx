@@ -17,6 +17,8 @@ import type { Metadata } from 'next';
 import { listFeed } from '@xsu/core';
 import { createCommunityPorts } from '@xsu/platform';
 
+import { EmptyState } from '@/components/empty-state';
+import { PageHeader } from '@/components/page-header';
 import { PostList } from '@/features/community/post-list';
 import { toPostCardModels } from '@/features/community/view';
 
@@ -61,7 +63,7 @@ export default async function CommunitySearchPage({ searchParams }: SearchPagePr
     <div className="flex flex-col gap-6">
       <SearchForm initialQuery={query} />
       {query === '' ? null : posts.length === 0 ? (
-        <p className="text-sm text-muted-foreground">没有找到相关帖子。</p>
+        <EmptyState title="没有找到相关帖子。" description="试试换个关键词，或去掉过于具体的词。" />
       ) : (
         <PostList posts={posts} nextCursor={nextCursor} q={query} />
       )}
@@ -75,8 +77,8 @@ export default async function CommunitySearchPage({ searchParams }: SearchPagePr
  */
 function SearchForm({ initialQuery }: { initialQuery: string }) {
   return (
-    <section className="flex flex-col gap-2">
-      <h1 className="text-xl font-semibold tracking-tight md:text-2xl">搜索帖子</h1>
+    <>
+      <PageHeader title="搜索帖子" />
       <form action="/community/search" method="get" className="flex gap-2" role="search">
         <input
           type="search"
@@ -93,6 +95,6 @@ function SearchForm({ initialQuery }: { initialQuery: string }) {
           搜索
         </button>
       </form>
-    </section>
+    </>
   );
 }

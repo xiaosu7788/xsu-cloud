@@ -32,6 +32,7 @@ import { decideToolRunAccess, findTool, TOOL_FAILURE, type ToolFailure } from '@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -83,14 +84,10 @@ export default async function ConsoleToolRunDetailPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">
-          {toolDisplayName(run.toolSlug)}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {describeRunStatus(run.status, run.errorCode)} · {formatRunTime(run.createdAt)}
-        </p>
-      </section>
+      <PageHeader
+        title={toolDisplayName(run.toolSlug)}
+        description={`${describeRunStatus(run.status, run.errorCode)} · ${formatRunTime(run.createdAt)}`}
+      />
 
       <div className="flex flex-wrap gap-3">
         <Button asChild variant="outline" size="sm">

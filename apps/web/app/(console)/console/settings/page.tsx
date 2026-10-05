@@ -21,6 +21,7 @@
  */
 import type { Metadata } from 'next';
 
+import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 import { AccessDenied } from '@/features/auth/access-denied';
@@ -50,10 +51,7 @@ export default async function ConsoleSettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">账号设置</h1>
-        <p className="text-sm text-muted-foreground">当前登录账号与外观设置。</p>
-      </section>
+      <PageHeader title="账号设置" description="当前登录账号与外观设置。" />
 
       <Card>
         <CardHeader>

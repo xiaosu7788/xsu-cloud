@@ -11,6 +11,7 @@ import type { AdminToolRunRow } from '@xsu/core';
 import { getAdminTaskBoard } from '@xsu/core';
 import { createAdminGateway } from '@xsu/platform';
 
+import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ResponsiveTable, type ResponsiveTableColumn } from '@/components/responsive-table';
 import { AccessDenied } from '@/features/auth/access-denied';
@@ -141,7 +142,7 @@ export default async function AdminTasksPage() {
   if (!board.ok) {
     return (
       <div className="flex flex-col gap-6">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">任务管理</h1>
+        <PageHeader title="任务管理" />
         <p className="text-sm text-destructive">{board.failure.message}</p>
       </div>
     );
@@ -151,12 +152,10 @@ export default async function AdminTasksPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">任务管理</h1>
-        <p className="text-sm text-muted-foreground">
-          工具运行的只读统计。M5 不提供重试与取消，队列操作随 M6 落地。
-        </p>
-      </section>
+      <PageHeader
+        title="任务管理"
+        description="工具运行的只读统计。M5 不提供重试与取消，队列操作随 M6 落地。"
+      />
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>

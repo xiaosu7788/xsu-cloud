@@ -19,6 +19,8 @@ import Link from 'next/link';
 
 import { listFeed } from '@xsu/core';
 import { createCommunityPorts } from '@xsu/platform';
+import { EmptyState } from '@/components/empty-state';
+import { PageHeader } from '@/components/page-header';
 import { COMMUNITY_SEARCH, CONSOLE_COMMUNITY } from '@/features/community/routes';
 import { toPostCardModels } from '@/features/community/view';
 import { PostList } from '@/features/community/post-list';
@@ -51,24 +53,31 @@ export default async function CommunityHomePage() {
   const posts = toPostCardModels(outcome.items, authors, counts);
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">社区</h1>
-        <p className="text-sm text-muted-foreground">
-          公开的帖子时间线。
-          <Link href={COMMUNITY_SEARCH} className="underline underline-offset-4">
-            搜索帖子
-          </Link>
-        </p>
-        {/* 发帖入口在控制台：公开页不读会话，写操作一律登录后进行。 */}
-        <p className="text-sm text-muted-foreground">
-          想发帖？
-          <Link href={CONSOLE_COMMUNITY} className="underline underline-offset-4">
-            去控制台
-          </Link>
-        </p>
-      </section>
+      <PageHeader
+        title="社区"
+        description={
+          <>
+            公开的帖子时间线。
+            <Link href={COMMUNITY_SEARCH} className="underline underline-offset-4">
+              搜索帖子
+            </Link>
+            {/* 发帖入口在控制台：公开页不读会话，写操作一律登录后进行。 */} 想发帖？
+            <Link href={CONSOLE_COMMUNITY} className="underline underline-offset-4">
+              去控制台
+            </Link>
+          </>
+        }
+      />
       {posts.length === 0 ? (
-        <p className="text-sm text-muted-foreground">还没有帖子，来发第一篇。</p>
+        <EmptyState
+          title="还没有帖子"
+          description="这个站点的公开讨论从第一篇开始。"
+          action={
+            <Link href={CONSOLE_COMMUNITY} className="text-sm underline underline-offset-4">
+              去控制台发帖
+            </Link>
+          }
+        />
       ) : (
         <PostList posts={posts} nextCursor={outcome.nextCursor} />
       )}

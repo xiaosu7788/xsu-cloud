@@ -19,6 +19,8 @@ import { listMyPosts } from '@xsu/core';
 import { createCommunityPorts } from '@xsu/platform';
 
 import { createPostAction, deletePostAction } from './actions';
+import { EmptyState } from '@/components/empty-state';
+import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { AccessDenied } from '@/features/auth/access-denied';
 import { redirectToSignInIfUnauthenticated } from '@/features/auth/guard';
@@ -52,23 +54,25 @@ export default async function ConsoleCommunityPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">我的帖子</h1>
-        <p className="text-sm text-muted-foreground">
-          发帖、编辑与删除都在这里；公开时间线在{' '}
-          <Link href={COMMUNITY_HOME} className="underline underline-offset-4">
-            社区首页
-          </Link>
-          。
-        </p>
-      </section>
+      <PageHeader
+        title="我的帖子"
+        description={
+          <>
+            发帖、编辑与删除都在这里；公开时间线在{' '}
+            <Link href={COMMUNITY_HOME} className="underline underline-offset-4">
+              社区首页
+            </Link>
+            。
+          </>
+        }
+      />
 
       <PostForm action={createPostAction} mode="create" />
 
       <section className="flex flex-col gap-3" aria-label="我发过的帖子">
         <h2 className="text-base font-semibold">我发过的帖子</h2>
         {posts.length === 0 ? (
-          <p className="text-sm text-muted-foreground">还没有发过帖子。</p>
+          <EmptyState title="还没有发过帖子" description="用上面的表单写下第一篇。" />
         ) : (
           <ul className="flex flex-col gap-4">
             {posts.map((post) => (

@@ -11,6 +11,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -30,12 +31,10 @@ const PENDING_SECTIONS = [
 export default function ConsoleHomePage() {
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">控制台</h1>
-        <p className="text-sm text-muted-foreground">
-          账号与工具箱在这里。其余模块从 M4 起逐个接进来，还没落地的都列在最下面。
-        </p>
-      </section>
+      <PageHeader
+        title="控制台"
+        description="账号与工具箱在这里。其余模块从 M4 起逐个接进来，还没落地的都列在最下面。"
+      />
 
       <Card>
         <CardHeader>

@@ -25,6 +25,7 @@ import { isRegisteredToolSlug, listTools } from '@xsu/core';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -57,14 +58,14 @@ export default async function ConsoleToolsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">工具箱</h1>
-        <p className="text-sm text-muted-foreground">
-          {ports.quotaPerHour > 0
+      <PageHeader
+        title="工具箱"
+        description={
+          ports.quotaPerHour > 0
             ? `每个账号每小时最多执行 ${ports.quotaPerHour} 次，超限会返回明确的错误码。`
-            : '当前已关闭工具执行（配额上限为 0）。'}
-        </p>
-      </section>
+            : '当前已关闭工具执行（配额上限为 0）。'
+        }
+      />
 
       {favoriteTools.length > 0 ? (
         <Card>

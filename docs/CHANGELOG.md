@@ -8,6 +8,33 @@
  
  ---
  
+## 设计系统基线对齐 DoulorCloud（2026-10-05，M5 之后）
+
+**状态**：外壳层与页面层全部落盘；提交级检查链、生产构建与端到端回归（双视口）均已实跑。基线口径、三处刻意偏离的对比度实算与已知债务见 [`DESIGN.md`](DESIGN.md)。
+
+### 新增
+
+- **设计基线** `apps/web/app/globals.css`：自托管可变字体 Outfit（`public/fonts/outfit-var.woff2`，32 KB，`unicode-range` 仅拉丁、中文回退系统栈）、`--font-app` 单一字体来源、`@utility glass-panel / glass-sidebar / glass-card`（透明度由 `color-mix` 从 `--card` 派生，`.dark` 档补 inset 高光描边）、`page-enter` / `data-fade` 关键帧、`cursor-glow`、云纹 `body::before` 底纹、`prefers-reduced-motion` 统一收口。
+- **共享组件** `apps/web/components/`：`page-header`、`empty-state`、`page-enter`、`data-fade`、`cursor-effect`、`ui/badge`、`ui/skeleton` 共 7 个（移植自参考实现，写法改为本站风格）。
+- **文档** [`DESIGN.md`](DESIGN.md) 建立并登记进 [`AGENTS.md`](AGENTS.md) 文档表（A 级）与 [`README.md`](README.md) 清单。
+
+### 行为变化
+
+- **全站标题层级统一**：19 个页面的手写 `<h1>` 标题区改为 `PageHeader`（标题 + 说明 + 右侧操作），移动端标题由 `text-xl` 变为 `text-2xl`。`/` 与 `/tools` 的 hero 标题、帖子详情的标题（带作者与时间行）**保持原样**，不走组件。
+- **`PageHeader` 不自带外边距**：参考实现是 `mb-8`，与本站页面容器的 `gap-6` 叠加会变成 56px，导致「用了组件的页面」与「没用组件的页面」间距不一致。
+- **`PageHeader` 的 `description` 收 `ReactNode`**（`title` 仍收 `string`）：说明文字里嵌链接的页面（控制台「我的帖子」、编辑帖、公开社区索引）不必在「丢链接」与「不用组件」之间二选一。
+- **空态统一为 `EmptyState`**：公开社区索引、标签页、搜索页与控制台「我的帖子」的四处一行文案改为「标题 + 说明 + 下一步入口」。搜索页的 `没有找到相关帖子。` 文案逐字保留（e2e 精确断言）。
+
+### 修复
+
+- **后台入口对管理员不可见**（`(console)/layout.tsx`）：`ADMIN_HOME` 此前只在 `(admin)` 分区内被引用，管理员登录后落在控制台却看不到任何通往后台的入口。改为按角色装配控制台导航项。
+
+### 已知债务
+
+- `badge` / `skeleton` / `data-fade` 三个组件**已移植但未接线**（`badge` 与既有的 `adminStatusBadge` 是两套状态样式，接线前须先统一）。全文见 [`DESIGN.md`](DESIGN.md) 第 9 节。
+
+---
+
  ## M5 — 后台管理（2026-10-05）
  
  **状态**：六项交付物全部落盘；提交级检查链、生产构建与端到端回归（双视口）均已实跑。四条退出标准的证据见 [`ROADMAP.md`](ROADMAP.md) M5「状态」，领域规则与防自锁见 [`spec/SPEC-admin.md`](spec/SPEC-admin.md)，表结构见 [`DATA-MODEL.md`](DATA-MODEL.md) 3.13 与 3.12。

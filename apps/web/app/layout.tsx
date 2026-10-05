@@ -26,6 +26,7 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 
+import { CursorGlow } from '@/components/cursor-effect';
 import { ServiceWorkerRegistrar } from '@/components/service-worker-registrar';
 import { THEME_COLOR } from '@/components/theme';
 import { ThemeColorSync } from '@/components/theme-color-sync';
@@ -88,6 +89,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         </ThemeProvider>
         {/* SW 只增强，不影响首屏；放在 theme 之外避免它被主题切换连带重渲染。 */}
         <ServiceWorkerRegistrar />
+        {/*
+         * 光晕层放在主题上下文**之外**：它靠观测 `<html>` 上的 `dark` 类判断当前主题
+         * （见 `components/cursor-effect.tsx` 的 `useIsDark`），不需要 `useTheme` 的上下文，
+         * 因此不必挤进 `ThemeProvider` 里面。
+         */}
+        <CursorGlow />
       </body>
     </html>
   );

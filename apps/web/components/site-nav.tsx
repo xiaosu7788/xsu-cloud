@@ -26,6 +26,13 @@
  * 顶栏是 `sticky top-0`，在 iPhone 横屏、刘海屏下会被状态栏区域盖住；`viewport-fit=cover`
  * 已由根布局开启（见 `app/layout.tsx`），所以这里补 `pt-[env(safe-area-inset-top)]` 即可。
  * 不加的话顶部会有一截内容压在系统状态栏下面，且无法滚动出来。
+ *
+ * ## 顶栏与底部 Tab 用同一档玻璃
+ *
+ * 与 `responsive-nav.tsx` 的桌面侧边栏同档（`app/globals.css` 的 `@utility glass-panel`）。
+ * 原来写死的 `bg-background/95 backdrop-blur` 只在这层背后刚好是纯底色时才成立，而本站在
+ * `body` 上画了云纹底纹：不透明色会把它整块盖掉，模糊也就无从谈起。改由 `color-mix` 从
+ * `--card` 派生透明度后，明暗主题自动适配，也免掉两处硬编码的 95%。
  */
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -61,7 +68,7 @@ export function SiteNav({ items, actions, label, className }: SiteNavProps) {
     <>
       <header
         className={cn(
-          'sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur',
+          'glass-panel sticky top-0 z-40 border-b border-border',
           'pt-[env(safe-area-inset-top)]',
           className,
         )}
@@ -130,7 +137,7 @@ export function SiteNav({ items, actions, label, className }: SiteNavProps) {
       <nav
         aria-label={label}
         className={cn(
-          'fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 backdrop-blur',
+          'glass-panel fixed inset-x-0 bottom-0 z-40 border-t border-border',
           'pb-[env(safe-area-inset-bottom)] md:hidden',
         )}
       >
