@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ESLint } from 'eslint';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 /**
  * 分层铁律的故意失败用例。
@@ -40,6 +40,15 @@ const coreForbiddenCases: Array<[string, string]> = [
   ['集成层包名', "import { upload } from '@xsu/integrations';\nexport { upload };\n"],
   ['集成层相对路径逃逸', "import { upload } from '../../integrations/s3';\nexport { upload };\n"],
 ];
+
+/**
+ * 首个 `lintText` 会把 flat config 与全部插件加载进来，冷启动在本机实测约 6 秒
+ * （后续每个用例 5–20 毫秒）。让它落在某个用例里会撞上 vitest 默认的 5 秒单项超时，
+ * 于是同一份代码在机器繁忙时随机变红 —— 这里先把这笔开销付掉。
+ */
+beforeAll(async () => {
+  await coreProbe("import { z } from 'zod';\nexport { z };\n");
+}, 60_000);
 
 describe('分层铁律：packages/core 不得依赖框架与集成层', () => {
   it.each(coreForbiddenCases)('%s 被拒绝', async (_case, code) => {
