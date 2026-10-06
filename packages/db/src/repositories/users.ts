@@ -13,7 +13,7 @@
 import { eq } from 'drizzle-orm';
 
 import type { Database } from '../client';
-import { account, user } from '../schema/auth';
+import { ADMIN_ROLE, account, user } from '../schema/auth';
 
 /**
  * 该用户名下绑定的登录方式。
@@ -56,4 +56,21 @@ export async function userExists(db: Database, userId: string): Promise<boolean>
   const rows = await db.select({ id: user.id }).from(user).where(eq(user.id, userId)).limit(1);
 
   return rows.length > 0;
+}
+
+/**
+ * 这个人是不是管理员。
+ *
+ * **只回答「是不是」，不返回 role 字符串。** 需要这个事实的场景是私信的「管理员豁免」
+ * （`packages/core/src/social/rules.ts` 的 `decideMessagePermission`）；角色字符串流到页面层，
+ * 只会长出一堆「按角色显示不同 UI」的分支，把判定挪出领域层。要读写角色本身走后台仓储
+ * （`./admin` 的 `getAdminUserById` / `updateUserRole`）。
+ *
+ * 查无此人返回 `false`：「不是管理员」与「查不到」在调用点的处理完全一样（都按普通用户
+ * 走「先申请」），多一个分支不会多出任何行为。
+ */
+export async function isUserAdmin(db: Database, userId: string): Promise<boolean> {
+  const rows = await db.select({ role: user.role }).from(user).where(eq(user.id, userId)).limit(1);
+
+  return rows[0]?.role === ADMIN_ROLE;
 }

@@ -2,8 +2,8 @@
 
 本文件是本仓库的强制约束，在本项目范围内优先于通用个人习惯。与 `~/.pi/agent/AGENTS.md` 冲突时以本文件为准；本文件未涉及的，按全局规则执行。
 
-> **当前阶段：M5 后台管理已落地，设计系统已按参考实现对齐（含首页落地页）；纯站内社交功能批的数据层与领域层已落盘，页面层尚未开工。**
-M1 落盘鉴权与设计系统基线、M2 落盘工具箱与 worker 基础设施，以及 k6 实测后回填的容量与压测数字；M3 再落下社区五表（`posts` / `comments` / `reactions` / `reports` / `audit_logs`，追加只读触发器是 drizzle-kit 表达不了的手写 SQL）、`packages/core/src/community` 领域层、`packages/platform` 的 `CommunityGateway` 与点赞计数缓存（Redis TTL 60 秒）、`(site)` 社区四页 + `(console)` 我的帖子 + `(admin)` 举报处置、点赞 / 批量计数 / 举报三个 API 路由、`docs/spec/SPEC-community.md`，`scripts/grant-admin.ts` 补上了首个管理员的提权入口。M5 再落下后台管理：`(admin)` 六页面（概览 / 用户 / 内容 / 任务 / 站点配置 / 审计）、`packages/core/src/admin` 领域层、`site_config` 单行表与配额覆盖入口（优先级 `site_config 覆盖 > env 默认 > core 常量`）、封禁即拒新会话（`session.create.before` 现查 + 封禁事务内删会话），成本看板随 M4 补。设计系统随后按参考实现全量对齐（token、玻璃层次、动效与 7 个共享组件，见 `docs/DESIGN.md`）；站内社交批落下九张表（迁移 `0004`，见 `docs/DATA-MODEL.md` 3.14–3.22）与 `packages/core/src/social` 领域层，**页面层尚未开工**（见 `docs/ROADMAP.md`「纯站内社交功能批」）。**M1、M2、M3 与 M5 的退出标准现在都由可重跑的用例守住**：`pnpm test`（12 个文件 235 个用例，含 `packages/core` 分支覆盖率门槛 80%，实测 98%）与 `pnpm --filter @xsu/web test:e2e`（93 个用例，87 通过 / 6 跳过 / 0 失败；生产构建 + 真实库 + 双视口），CI 上每次提交都跑。
+> **当前阶段：M5 后台管理已落地，设计系统已按参考实现对齐（含首页落地页）；纯站内社交功能批的数据层、领域层与平台网关已落盘并跑过真库验证，页面层尚未开工。**
+M1 落盘鉴权与设计系统基线、M2 落盘工具箱与 worker 基础设施，以及 k6 实测后回填的容量与压测数字；M3 再落下社区五表（`posts` / `comments` / `reactions` / `reports` / `audit_logs`，追加只读触发器是 drizzle-kit 表达不了的手写 SQL）、`packages/core/src/community` 领域层、`packages/platform` 的 `CommunityGateway` 与点赞计数缓存（Redis TTL 60 秒）、`(site)` 社区四页 + `(console)` 我的帖子 + `(admin)` 举报处置、点赞 / 批量计数 / 举报三个 API 路由、`docs/spec/SPEC-community.md`，`scripts/grant-admin.ts` 补上了首个管理员的提权入口。M5 再落下后台管理：`(admin)` 六页面（概览 / 用户 / 内容 / 任务 / 站点配置 / 审计）、`packages/core/src/admin` 领域层、`site_config` 单行表与配额覆盖入口（优先级 `site_config 覆盖 > env 默认 > core 常量`）、封禁即拒新会话（`session.create.before` 现查 + 封禁事务内删会话），成本看板随 M4 补。设计系统随后按参考实现全量对齐（token、玻璃层次、动效与 7 个共享组件，见 `docs/DESIGN.md`）；站内社交批落下九张表（迁移 `0004`，见 `docs/DATA-MODEL.md` 3.14–3.22）、`packages/core/src/social` 领域层、`packages/db/src/repositories/social.ts` 仓储与 `packages/platform/src/social.ts` 的 `createSocialPorts` 网关装配，**页面层尚未开工**（见 `docs/ROADMAP.md`「纯站内社交功能批」）。**M1、M2、M3 与 M5 的退出标准现在都由可重跑的用例守住**：`pnpm test`（12 个文件 235 个用例，含 `packages/core` 分支覆盖率门槛 80%，实测 98%）与 `pnpm --filter @xsu/web test:e2e`（93 个用例，87 通过 / 6 跳过 / 0 失败；生产构建 + 真实库 + 双视口），CI 上每次提交都跑；社交批的仓储与网关另由两份**真库脚本**守住（`pnpm exec tsx scripts/verify-social-repo.ts` / `scripts/verify-social-gateway.ts`，2026-10-06 实测 66 + 62 条断言全过；手工跑，步骤见 `docs/TESTING.md` 5.4）。
 
 ---
 
@@ -35,7 +35,7 @@ packages/shared            无业务语义的工具与类型
 packages/config            eslint / tsconfig / tailwind 共享配置
 docs/                      文档（见第 6 节）
 docker/                    Docker Compose 与容器配置
-scripts/                   一次性脚本与运维脚本
+scripts/                   一次性脚本、运维脚本与真库验证脚本
 .github/workflows/           CI 工作流（提交级检查）
 Temp/                       临时文件与中间产物（已 gitignore，约定 Temp/{tests,scripts,cache,out}）
 ```
@@ -51,6 +51,10 @@ Temp/                       临时文件与中间产物（已 gitignore，约定
 （`pnpm --filter @xsu/web worker`，见 `docs/ARCHITECTURE.md` 7.3）。它不参与任何请求路径，也不属于
 某个业务模块，因此不进 `app/` 路由树；它与应用同处最上层，对底层的访问同样只经 `@xsu/platform`，
 不直接 import `@xsu/db`。
+
+`scripts/` 的理由：这里放一次性脚本、运维脚本与**真库验证脚本**。真库验证脚本（现有的两份是
+`verify-social-repo.ts` 与 `verify-social-gateway.ts`）需要真实 Postgres 与真实约束，进不了提交级测试，
+但必须可复跑 —— 所以既不能留在 `Temp/`（已 gitignore），也不能塞进 `pnpm test`（提交级不连真实库）。
 
 ## 3. 分层铁律（ESLint 强制，违反即 CI 失败）
 
@@ -159,6 +163,11 @@ Temp/                       临时文件与中间产物（已 gitignore，约定
 - **PR 级**：Playwright 主流程（桌面 + 移动两套视口）、axe 无 serious 问题、A 级文档同步检查。前两项已实现为 `apps/web/e2e` 下的可重跑用例，命令 `pnpm --filter @xsu/web test:e2e`（要求本地 Postgres 与 Redis 都已启动、迁移已跑过 —— 夹具走真实注册编排，而注册链路依赖队列），CI 的 `e2e` job 跑同一批用例并起同样的两个 service。
 - **周期级**：每周依赖漏洞扫描。
 - **里程碑级**：k6 压测，**真实数字写回 `docs/ARCHITECTURE.md`**。达不到预期就调架构，不调文档。
+- **真库级（手工，不入 CI）**：需要真实 Postgres 与真实约束的验证是手工脚本，不是用例 —— 现有两份：
+  `pnpm exec tsx scripts/verify-social-repo.ts`（社交九表仓储的约束行为与返回值语义）与
+  `pnpm exec tsx scripts/verify-social-gateway.ts`（平台网关的端口装配 + 领域层在真库上跑完整流程）。
+  改了 `repositories/social.ts` 或 `platform/src/social.ts` 必须重跑，退出码 0 才算过；步骤与实测数字见
+  `docs/TESTING.md` 5.4。
 
 ## 8. 尚未决策项 —— 禁止擅自假定
 
@@ -182,7 +191,7 @@ Temp/                       临时文件与中间产物（已 gitignore，约定
 
 - 本机直连 `github.com:443` 会被重置（`api.github.com` 正常），推送必须显式走本地代理：`git -c http.proxy=socks5h://127.0.0.1:10808 push`。SSH 的 443 端口通，但本机默认 SSH 身份是 `xiaosu-git`，不是本仓库所有者账号，所以本仓库固定走 https + gh 凭证。
 - 本项目外层还有一个无提交、无远端的 git 仓库（`D:\Project`，其下并列多个无关项目）。在它的工作树里执行 `git add` 会把本项目当成嵌套仓库，操作前先确认当前目录。
-- `docker/docker-compose.yml` 的 `postgres` 与 `redis` 两个服务都已实际 `up` 过（`xsu-postgres`、`xsu-redis`，healthcheck 均 healthy，宿主端口 5433 / 6379）。postgres 已跑过迁移；redis 在 M2 引入 BullMQ 时启用，队列与清理任务的手工回归步骤见 `docs/TESTING.md` 第 5 节。
+- `docker/docker-compose.yml` 的 `postgres` 与 `redis` 两个服务都已实际 `up` 过（`xsu-postgres`、`xsu-redis`，healthcheck 均 healthy，宿主端口 5433 / 6379）。postgres 已跑过迁移；redis 在 M2 引入 BullMQ 时启用，队列与清理任务的手工回归步骤、以及社交批的两份真库验证脚本见 `docs/TESTING.md` 第 5 节（真库脚本是其中的 5.4）。
 - 第 5 节的版本号已在 M1 与 M2 从 npm registry 实查后固化到各 `package.json`，实查结果记在 `docs/CHANGELOG.md` 的对应里程碑节（M2 新增：BullMQ 6.3.11、ioredis 6.0.0、`@vitest/coverage-v8` 5.0.2、`tsx` 4.23.15、TanStack Query 5.104.1 / Table 9.2.4）；新增或升级依赖时需重新核对并记录。**recharts 仍未安装**——它的用途是后台看板，属 M5。
 - `packages/core` 的 ≥80% 分支覆盖率要求已有工具支撑：`@vitest/coverage-v8` 在 M2 接入，`pnpm test` 内置 `--coverage` 且门槛写在 `vitest.config.ts`；实测分支覆盖率 **98%**。
 - Markdown（含 A 级文档）不参与 Prettier 检查，见 `.prettierignore`；格式靠人工维持。

@@ -6,6 +6,43 @@
 
 ---
  
+## 站内社交批：仓储、平台网关与真库验证脚本（2026-10-06，M5 之后）
+
+**状态**：数据层与领域层（2026-10-05）之后，本批再落下**仓储与平台网关**，并给这两层补上可重跑的真库脚本；
+**页面层、Server Action、API 路由与端到端用例仍未开工**，[`PRD.md`](PRD.md) 3.7 的六条验收标准依旧只有单测
+一侧的证据。属同一批次，进度与「未做的部分」见 [`ROADMAP.md`](ROADMAP.md)「纯站内社交功能批」。
+
+### 新增
+
+- **数据层仓储** `packages/db/src/repositories/social.ts`：九表读写，幂等一律靠 `ON CONFLICT ... WHERE`
+  撞部分唯一索引（`notifications` 与 `point_transactions`），**不靠「先查后插」**；`users.ts` 补
+  `isUserAdmin`（只回答「是不是管理员」，不把角色字符串放到页面层 —— 私信的管理员豁免判定留在领域层）。
+- **平台网关** `packages/platform/src/social.ts`：`createSocialPorts` 把 `SocialPorts` 的六个功能组接到仓储
+  函数上，另有四个页面读取（作者摘要 / 管理员判定 / 会话列表 / 未读合计）。与 `./community` 的差异写在文件头：
+  `userId` 不绑定进端口（领域函数自己收），装配是**同步函数**。
+- **验证脚本** `scripts/verify-social-repo.ts`（验仓储）与 `scripts/verify-social-gateway.ts`（验装配）：
+  两者都要真实 Postgres 与真实约束，进不了提交级测试，因此按 [`TESTING.md`](TESTING.md) 5.4 的手工清单形态
+  落在 `scripts/`（**不放 `Temp/`** —— 那里的草稿不进仓库，等于别人无法复跑；第 6 节的 k6 脚本已欠过这笔债）。
+
+### 验证
+
+- `pnpm typecheck` / `pnpm lint` / `pnpm format:check` 退出码 0；`scripts/` 进根 `tsc --noEmit`，
+  端口与仓储函数接不上会当场让 typecheck 失败。
+- 真库实跑（2026-10-06，容器 `xsu-postgres`，迁移 `0004` 已生效）：仓储侧 66 条断言、网关侧 62 条断言全过；
+  两份脚本各自清场（一次性用户级联删除，网关那份回数九表残留行数与孤儿通知数均为 0）。
+- `pnpm test` 12 个文件 235 个用例全过（`packages/core` 分支覆盖率 98%）；顺带修掉一处测试基础设施的偶发红：
+  `packages/config/eslint/tests/layering.test.ts` 的首个用例要替整个文件付 ESLint flat config 的冷启动
+  （本机实测 5668 毫秒），撞上 vitest 默认的 5 秒单项超时，机器繁忙时随机失败 —— 改为 `beforeAll`
+  预热（钩子超时 60 秒），**断言一条未动**。
+
+### 已知债务
+
+- **页面层未开工**，见上文「状态」；此时不得出现「社交功能已完成」这类表述。
+- 两份真库脚本是**手工跑**的：不在 CI、不被 `pnpm test` 拦住，改了仓储忘记重跑不会被任何自动检查发现
+  （与 [`TESTING.md`](TESTING.md) 已知债务里的其余手工步骤同一代价）。
+
+---
+
 ## 站内社交批：数据层 + 领域层（2026-10-05，M5 之后）
 
 **状态**：九张表与领域层已落盘并实跑验证；**页面层、Server Action、API 路由与端到端用例尚未开工**，因此 [`PRD.md`](PRD.md) 3.7 的六条验收标准只有单测一侧的证据。范围与逐条设计理由见 [`spec/SPEC-social.md`](spec/SPEC-social.md)，进度与「未做的部分」见 [`ROADMAP.md`](ROADMAP.md)「纯站内社交功能批」，逐表字段见 [`DATA-MODEL.md`](DATA-MODEL.md) 3.14–3.22。

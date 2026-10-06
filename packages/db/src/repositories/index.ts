@@ -12,3 +12,4 @@ export * from './users';
 export * from './tools';
 export * from './community';
 export * from './admin';
+export * from './social';

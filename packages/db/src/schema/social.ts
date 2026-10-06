@@ -402,6 +402,47 @@ export const directMessageListColumns = {
   readAt: directMessages.readAt,
 };
 
+/** 一对人的私信关系。方向见上面的 `dmContacts` 注释（`owner` 收到申请、`peer` 发起）。 */
+export type DmContactListItem = {
+  ownerId: string;
+  peerId: string;
+  status: DmContactStatus;
+  updatedAt: Date;
+};
+
+export const dmContactColumns = {
+  ownerId: dmContacts.ownerId,
+  peerId: dmContacts.peerId,
+  status: dmContacts.status,
+  updatedAt: dmContacts.updatedAt,
+};
+
+/** 空间展示设置。**没有行 = 从没设置过**，兜默认值在领域层（`getSpaceSettings`）。 */
+export type SpaceSettingsRow = {
+  showStats: boolean;
+  showPosts: boolean;
+  showAchievements: boolean;
+  motto: string | null;
+};
+
+export const spaceSettingsColumns = {
+  showStats: userSpaces.showStats,
+  showPosts: userSpaces.showPosts,
+  showAchievements: userSpaces.showAchievements,
+  motto: userSpaces.motto,
+};
+
+/** 访问统计。`lastVisitAt` 为 null = 从没计入过（头一次访问必计）。 */
+export type UserStatsRow = {
+  visitCount: number;
+  lastVisitAt: Date | null;
+};
+
+export const userStatsColumns = {
+  visitCount: userStats.visitCount,
+  lastVisitAt: userStats.lastVisitAt,
+};
+
 export type PointTransactionListItem = {
   id: string;
   delta: number;

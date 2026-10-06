@@ -151,7 +151,7 @@ axe 只跑公开页两页 × 两视口的 serious/critical 档，不是全站无
 
 ---
 
-## 5. 手工回归：队列与清理任务
+## 5. 手工回归：队列、清理与真库脚本
 
 队列的自动化测试只覆盖 `dispatchJob` 的分派逻辑（提交级不起 Redis）。**「任务确实被 worker 取走并处理了」
 连着真实 Redis 才验得了**，所以这是一步手工回归，每次改动 `queue.ts`、`maintenance.ts` 或
@@ -218,6 +218,42 @@ from (select id from "user" limit 1) as u;
 挡住了，于是「只修类型映射仍然失败」。两个根因与约定写在 `packages/db/src/repositories/tools.ts` 的文件头。
 **裸模板躲得过编译器和单测，只有对着真实库实跑才会露出来**——这就是本条必须留在手工清单里的原因。
 
+### 5.4 社交批的真库验证脚本
+
+社交批把正确性押在**真实约束**上：通知与积分的幂等各靠一条部分唯一索引
+（`notifications_dedup_unique_idx`、`point_transactions_dedup_unique_idx`，谓词都是 `WHERE dedup_key IS NOT NULL`），
+签到靠复合主键 `(user_id, checkin_date)`，空间访问节流靠「读回来的 `last_visit_at` 与传入的 `now` 比大小」。
+「撞了约束会怎样」「并发下谁会赢」只有真实 Postgres 答得了，假仓储无论怎么写都是绿的——因此这两件事不进
+`pnpm test`，而是两个可重跑的真库脚本，与本节其余步骤同一纪律：现场跑一次、留证据、失败不改断言。
+
+```powershell
+docker compose -f docker/docker-compose.yml up -d postgres
+pnpm --filter @xsu/db db:migrate
+
+pnpm exec tsx scripts/verify-social-repo.ts      # 仓储：约束行为与返回值语义
+pnpm exec tsx scripts/verify-social-gateway.ts   # 网关：端口装配 + 领域层在真库上跑完整流程
+```
+
+**两份不能互相替代。** `verify-social-repo.ts` 验每条 SQL 的约束行为与返回值语义：撞部分唯一索引返回
+`false`、撞键的积分发放不动余额也不留流水、私信标记已读只影响收件人、访问节流的边界（正好一小时）与领域层
+同界、成就重复解锁不新增行。`verify-social-gateway.ts` 验 `createSocialPorts` **把每个领域端口接到了哪个
+仓储函数上**，并让 `packages/core/src/social/` 在真库上跑完整流程：`transactionId` 接到 `dedupKey` 上、
+通知端口的 `now` 没翻译成 `createdAt`、`lastFromViewer` 取反了方向——这三类错误在仓储层全是对的，只有
+装配层看得见。反过来，装配对了也可能被某条 SQL 的边界悄悄破掉。**改 `repositories/social.ts` 或
+`platform/src/social.ts` 之后两份都要重跑。**
+
+**期望**：逐条打印 `PASS <断言名>｜actual=… expected=…`，末尾 `全部通过（<时间戳>）` 且退出码 0；
+有 FAIL 则退出码 1 并逐条给出 actual / expected。两份都用带时间戳的一次性用户，跑完删用户
+（社交九表外键全 `on delete cascade`），网关那份末尾还会回数九张表的残留行数与孤儿通知数。
+
+**实测（2026-10-06，容器 `xsu-postgres`）**：仓储侧 **66 条断言全过**（清理 2 行一次性用户）；
+网关侧 **62 条断言全过**（六个端口 + 四个页面读取；清场断言「九表无残留」「无孤儿通知」均为 0，
+清理 3 行一次性用户）。原始输出留在 `Temp/out/`（不入库）。
+
+**为什么在 `scripts/` 而不是 `Temp/`**：`Temp/` 已 gitignore，草稿放那里等于别人（以及未来的自己）无法
+复跑——第 6 节的 k6 脚本欠下过同样的债。两份脚本进 `scripts/` 后同时进根 `tsc --noEmit`
+（`tsconfig.json` 的 `include` 含 `scripts/**/*.ts`），端口与仓储函数接不上会当场让 `pnpm typecheck` 失败。
+
 ---
 
 ## 6. 里程碑级：k6 压测
@@ -241,7 +277,8 @@ from (select id from "user" limit 1) as u;
 - **用例数与覆盖率**：跑 `pnpm test`，把输出里的「Test Files / Tests」与覆盖率表和本文第 2.3、2.4 节对照；
   不一致即本文件过期，改本文件。
 - **端到端数字**：跑 `pnpm --filter @xsu/web test:e2e`，与第 3.1 节的 93 / 87 / 6 / 0 对照。
-- **手工回归步骤仍然可执行**：按第 5 节跑一遍，日志形态与实测描述一致。
+- **手工步骤与真库脚本仍然可执行**：按第 5 节跑一遍（含 5.4 的两份脚本，退出码 0、PASS 条数与实测一致），
+  日志形态与实测描述一致。
 - **不复制事实**：本文件里任何一条验收条款都应在 `PRD.md` 找到出处，命令应在 `AGENTS.md` 第 7 节找到出处；
   发现本文成了第二份事实来源，就是缺陷。
 - **实测记录**：第 2.3 / 2.4 节的数字取自 2026-10-05 的 `pnpm test` 实跑、第 3.1 节取自同日
@@ -250,9 +287,10 @@ from (select id from "user" limit 1) as u;
 
 ## 已知债务
 
-- **数据层仓储没有自动化测试。** 仓储的 SQL、并发正确性与「清理删对了哪些行」目前只靠真实库手工验
-  （第 5 节）。补自动化需要一套能起临时库的集成测试形态，M2 不做；风险是 SQL 缺陷只有现场验证才抓得到——
-  这一点已经被两条清理语句的失败证实过一次。
+- **数据层仓储没有自动化测试，只有真库手工脚本。** 仓储的 SQL、并发正确性与「清理删对了哪些行」目前只靠
+  真实库手工验（第 5 节）；社交九表另有第 5.4 节的两份脚本，覆盖「约束行为 + 端口装配」两层，但它们是
+  **手工跑**的：不进 `pnpm test`、不在 CI 里，改了仓储只有自觉重跑才会被拦住。补自动化需要一套能起临时库的
+  集成测试形态，M2 不做；风险是 SQL 缺陷只有现场验证才抓得到——这一点已经被两条清理语句的失败证实过一次。
 - **清理任务的回归流程是人工步骤，不是用例。** 它需要一个真实 Redis + 真实库 + 两个进程，
   塞进 `pnpm test` 会把提交级检查变重。代价是「有人改了清理却忘记跑」不会被任何自动检查拦住。
 - **压测脚本未入库。** k6 场景与编排脚本现在是 `Temp/` 下的草稿，`Temp/` 不进仓库，

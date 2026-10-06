@@ -16,6 +16,9 @@
  * 领域端口（`CommunityPorts`）由 `./community` 装配；`./cache` 是它依赖的计数缓存。
  * - `./admin`：后台管理（M5）的端口装配。无页面读取、无环境依赖，纯粹把 `AdminPorts`
  *   接到数据库仓储上；审计同事务与防自锁的兜底都在仓储与领域层。
+ * - `./quota`：站点配额的读取与覆盖（M5），优先级 `site_config 覆盖 > env 默认 > core 常量`
+ * - `./social`：社交的端口装配（领域端口 + 作者摘要/管理员判定/会话列表/未读合计四个页面读取）。
+ *   与 `./community` 的差异写在文件头：`userId` 不绑定进端口，`createSocialPorts` 是同步函数。
  *
  * 这里只放基础设施，不放业务规则；鉴权「谁能做什么」的判定属于领域层
  * （`packages/core/src/access.ts`）。
@@ -30,4 +33,5 @@ export * from './tools';
 export * from './cache';
 export * from './community';
 export * from './admin';
+export * from './social';
 export * from './quota';

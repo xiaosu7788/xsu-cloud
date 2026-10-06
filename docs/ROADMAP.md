@@ -216,16 +216,21 @@
 **推进顺序即依赖顺序**：通知 → 私信（入站产生通知）→ 个人空间 → 积分 → 签到（发放积分）→ 成就。
 排行榜不在本批（理由见 `SPEC-social.md` 1.2）。
 
-**当前状态（2026-10-05）：领域层与数据层已落盘，页面层尚未开工。**
+**当前状态（2026-10-06）：领域层、数据层与平台网关已落盘并跑过真库验证，页面层尚未开工。**
 
 - 数据层：`packages/db/src/schema/social.ts` 九张表 + 迁移 `0004_past_black_bird.sql`，已在本机实跑生效
   （库内 22 张表、2 条部分唯一索引），`db:check` 无 drift；逐表说明见 [`DATA-MODEL.md`](DATA-MODEL.md)
   3.14–3.22。
 - 领域层：`packages/core/src/social/`（`rules` / `notifications` / `points` / `checkins` / `messages` /
   `space` / `achievements` / `types` / `index`），端口以 `SocialPorts` 注入，纯函数无 I/O。
+- 平台网关与仓储（2026-10-06）：`packages/db/src/repositories/social.ts`（九表读写；幂等靠
+  `ON CONFLICT ... WHERE` 撞部分唯一索引，不靠「先查后插」）与 `packages/platform/src/social.ts` 的
+  `createSocialPorts`（六个领域端口 + 四个页面读取；`userId` 不绑定进端口，装配是同步函数）。
 - 验证：`pnpm test` **12 个文件 235 个用例全过**（其中 `social.test.ts` 74 例），`packages/core` 分支
   覆盖率 **98%**（`src/social` 96.41% 语句 / 98.08% 分支，门槛 80%）；`pnpm typecheck` / `pnpm lint` /
-  `format:check` 退出码 0。
+  `format:check` 退出码 0；仓储与网关另有两份**真库脚本**（`scripts/verify-social-repo.ts` 66 条断言 /
+  `scripts/verify-social-gateway.ts` 62 条断言，2026-10-06 在 `xsu-postgres` 上全过，步骤见
+  [`TESTING.md`](TESTING.md) 5.4）。
 
 **未做的部分**：页面、Server Action、API 路由与端到端用例都还没写。[`PRD.md`](PRD.md) 3.7 的六条验收标准
 目前只有单测一侧的证据，**要等页面层落地才算兑现**——中间不得声称「社交功能已完成」。
